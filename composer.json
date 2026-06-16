@@ -1,0 +1,74 @@
+{
+    "name": "n5s/dtcg-tokens",
+    "description": "PHP-first runtime library for DTCG design tokens, with Twig and Symfony bridges",
+    "license": "MIT",
+    "type": "library",
+    "keywords": [
+        "design-tokens",
+        "dtcg",
+        "twig",
+        "symfony",
+        "css"
+    ],
+    "authors": [
+        {
+            "name": "Nicolas Lemoine",
+            "email": "nico@n5s.dev"
+        }
+    ],
+    "require": {
+        "php": "^8.4",
+        "ozdemirburak/iris": "^4.1.1",
+        "psr/cache": "^3.0"
+    },
+    "require-dev": {
+        "ergebnis/composer-normalize": "^2.50",
+        "phpstan/phpstan": "^2.0",
+        "phpstan/phpstan-strict-rules": "^2.0",
+        "phpunit/phpunit": "^12 || ^13",
+        "rector/rector": "^2.4",
+        "shipmonk/phpstan-rules": "^4.4",
+        "symfony/cache": "^7.4 || ^8.0",
+        "symfony/config": "^7.4 || ^8.0",
+        "symfony/dependency-injection": "^7.4 || ^8.0",
+        "symfony/http-kernel": "^7.4 || ^8.0",
+        "symplify/easy-coding-standard": "^13.0",
+        "twig/twig": "^3.0"
+    },
+    "suggest": {
+        "symfony/http-kernel": "For the Symfony bundle (auto-wiring + Twig registration)",
+        "twig/twig": "For Twig template integration via TokenExtension"
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true,
+    "autoload": {
+        "psr-4": {
+            "n5s\\DtcgTokens\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "n5s\\DtcgTokens\\Tests\\": "tests/"
+        }
+    },
+    "config": {
+        "allow-plugins": {
+            "ergebnis/composer-normalize": true
+        },
+        "sort-packages": true
+    },
+    "scripts": {
+        "analyse": "vendor/bin/phpstan analyse --memory-limit=256M",
+        "cs": "vendor/bin/ecs check",
+        "cs:fix": "vendor/bin/ecs check --fix",
+        "qa": [
+            "@analyse",
+            "@cs",
+            "@rector",
+            "@test"
+        ],
+        "rector": "vendor/bin/rector process --dry-run",
+        "rector:fix": "vendor/bin/rector process",
+        "test": "vendor/bin/phpunit --testdox --colors=always"
+    }
+}
