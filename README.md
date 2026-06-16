@@ -2,6 +2,8 @@
 
 Read, resolve, and render [DTCG design tokens](https://tr.designtokens.org/) at runtime in PHP. It implements the [Design Tokens Community Group specification](https://tr.designtokens.org/) and is PHP-first, with optional [Twig](#twig) and [Symfony](#symfony) bridges.
 
+[![QA](https://github.com/nlemoine/dtcg-tokens/actions/workflows/qa.yml/badge.svg)](https://github.com/nlemoine/dtcg-tokens/actions/workflows/qa.yml)
+[![codecov](https://codecov.io/gh/nlemoine/dtcg-tokens/graph/badge.svg)](https://codecov.io/gh/nlemoine/dtcg-tokens)
 ![PHP ^8.4](https://img.shields.io/badge/PHP-%5E8.4-777BB4)
 ![License MIT](https://img.shields.io/badge/License-MIT-green)
 
