@@ -23,6 +23,19 @@ final readonly class ShadowValue implements TokenValueInterface
         return implode(', ', array_map($this->renderLayer(...), $this->layers));
     }
 
+    public function toCss(): string
+    {
+        return $this->__toString();
+    }
+
+    /**
+     * @return list<array{offsetX: DimensionValue, offsetY: DimensionValue, blur: DimensionValue, spread: DimensionValue, color: ColorValue, inset: bool}>
+     */
+    public function layers(): array
+    {
+        return $this->layers;
+    }
+
     public function forMode(string $mode): static
     {
         return $this->modes[$mode] ?? $this;

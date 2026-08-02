@@ -24,6 +24,14 @@ final class NumberTest extends TestCase
         yield 'huge avoids int overflow' => [1e20, '100000000000000000000'];
         yield 'negative fractional' => [-2.5, '-2.5'];
         yield 'integer type' => [42, '42'];
+        // Above value*10^12 = 2^52 (value >= ~4504), naive 12-decimal formatting
+        // leaks double-representation noise ("5000.000000000001").
+        yield 'noise threshold integer' => [4504.0, '4504'];
+        yield 'large integer float has no noise' => [5000.0, '5000'];
+        yield 'negative large integer float' => [-5000.0, '-5000'];
+        yield 'large fractional keeps authored precision' => [12345678.9, '12345678.9'];
+        yield 'hundredths' => [0.05, '0.05'];
+        yield 'precision capped at 12 decimals' => [1 / 3, '0.333333333333'];
     }
 
     #[DataProvider('provideValues')]

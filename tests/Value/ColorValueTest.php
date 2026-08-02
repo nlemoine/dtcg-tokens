@@ -56,16 +56,43 @@ final class ColorValueTest extends TestCase
 
     public function testHslPureRedConvertsToKnownHex(): void
     {
-        $color = ColorValue::fromComponents('hsl', [0.0, 1.0, 0.5], 1.0);
+        // DTCG spec ranges: H 0-360, S 0-100, L 0-100.
+        $color = ColorValue::fromComponents('hsl', [0.0, 100.0, 50.0], 1.0);
 
         self::assertSame('#ff0000', $color->toHex());
     }
 
     public function testHslToCss(): void
     {
-        $color = ColorValue::fromComponents('hsl', [0.0, 1.0, 0.5], 1.0);
+        $color = ColorValue::fromComponents('hsl', [0.0, 100.0, 50.0], 1.0);
 
         self::assertSame('hsl(0 100% 50%)', $color->toCss());
+    }
+
+    public function testHslCssTypicalValuesConvertToHex(): void
+    {
+        $color = ColorValue::fromComponents('hsl', [210.0, 100.0, 50.0], 1.0);
+
+        // G is exactly 127.5 at this hue; iris rounds it down.
+        self::assertSame('#007fff', $color->toHex());
+    }
+
+    public function testHslNegativeHueIsNormalizedForConversion(): void
+    {
+        // -150deg ≡ 210deg; conversion must not reject a legal CSS hue.
+        $color = ColorValue::fromComponents('hsl', [-150.0, 100.0, 50.0], 1.0);
+
+        self::assertSame(
+            ColorValue::fromComponents('hsl', [210.0, 100.0, 50.0], 1.0)->toHex(),
+            $color->toHex(),
+        );
+    }
+
+    public function testHslSaturationAboveRangeIsClampedForConversion(): void
+    {
+        $color = ColorValue::fromComponents('hsl', [0.0, 150.0, 50.0], 1.0);
+
+        self::assertSame('#ff0000', $color->toHex());
     }
 
     public function testHwbToCss(): void
@@ -73,6 +100,14 @@ final class ColorValueTest extends TestCase
         $color = ColorValue::fromComponents('hwb', [0.0, 0.0, 0.0], 1.0);
 
         self::assertSame('hwb(0 0% 0%)', $color->toCss());
+    }
+
+    public function testHwbNonZeroToCssEmitsSpecRangeComponentsVerbatim(): void
+    {
+        // DTCG spec ranges: H 0-360, W 0-100, B 0-100 — no scaling on output.
+        $color = ColorValue::fromComponents('hwb', [120.0, 20.0, 30.0], 1.0);
+
+        self::assertSame('hwb(120 20% 30%)', $color->toCss());
     }
 
     public function testToRgbClampsAlphaAboveOneToOpaque(): void
@@ -111,6 +146,7 @@ final class ColorValueTest extends TestCase
         $color = ColorValue::fromComponents('display-p3', [1.0, 0.0, 0.0], 1.0);
 
         $this->expectException(TokenException::class);
+        $this->expectExceptionMessage('has no sRGB fallback');
         $color->toHex();
     }
 
@@ -119,6 +155,7 @@ final class ColorValueTest extends TestCase
         $color = ColorValue::fromComponents('display-p3', [1.0, 0.0, 0.0], 1.0);
 
         $this->expectException(TokenException::class);
+        $this->expectExceptionMessage('has no sRGB fallback');
         $color->toRgb();
     }
 
@@ -242,23 +279,27 @@ final class ColorValueTest extends TestCase
         self::assertSame('#336699', $color->toCss());
     }
 
-    public function testOkhsvToCssThrowsWithoutHexFallback(): void
+    public function testOkhsvWithoutHexFallbackIsRejectedAtConstruction(): void
     {
-        $color = ColorValue::fromComponents('okhsv', [0.5, 0.5, 0.5], 1.0);
-
+        // Deferring this to toCss() would let the color parse fine and then
+        // explode through __toString() mid-render (Twig, CssExporter).
         $this->expectException(TokenException::class);
-        $color->toCss();
+        $this->expectExceptionMessage('has no CSS serialization');
+
+        ColorValue::fromComponents('okhsv', [0.5, 0.5, 0.5], 1.0);
     }
 
     public function testUnknownColorSpaceThrows(): void
     {
         $this->expectException(TokenException::class);
+        $this->expectExceptionMessage('Unsupported color space "not-a-space"');
         ColorValue::fromComponents('not-a-space', [0.0, 0.0, 0.0], 1.0);
     }
 
     public function testFromComponentsRejectsFewerThanThreeComponents(): void
     {
         $this->expectException(TokenException::class);
+        $this->expectExceptionMessage('requires at least 3 components, got 2');
         ColorValue::fromComponents('srgb', [1.0, 0.0], 1.0);
     }
 
@@ -319,5 +360,132 @@ final class ColorValueTest extends TestCase
         $color = ColorValue::fromComponents('display-p3', [1.0, 0.0, 0.0], 1.0, '#fd000080');
 
         self::assertSame('rgb(253 0 0)', $color->toRgb());
+    }
+
+    public function testSrgbComponentAboveOneIsClampedInHexAndRgb(): void
+    {
+        // Out-of-range srgb (e.g. an unmapped P3 conversion) must not produce
+        // structurally invalid CSS like "#17f0000" / "rgb(383 0 0)".
+        $color = ColorValue::fromComponents('srgb', [1.5, 0.0, 0.0], 1.0);
+
+        self::assertSame('#ff0000', $color->toHex());
+        self::assertSame('rgb(255 0 0)', $color->toRgb());
+    }
+
+    public function testSrgbNegativeComponentIsClampedInHexAndRgb(): void
+    {
+        $color = ColorValue::fromComponents('srgb', [-0.2, 0.4, 0.9], 1.0);
+
+        self::assertSame('#0066e6', $color->toHex());
+        self::assertSame('rgb(0 102 230)', $color->toRgb());
+    }
+
+    public function testOutOfRangeComponentsAreStillStoredVerbatim(): void
+    {
+        // Clamping happens at serialization only; storage stays lossless.
+        $color = ColorValue::fromComponents('srgb', [1.5, 0.0, -0.2], 1.0);
+
+        self::assertSame([1.5, 0.0, -0.2], $color->components());
+    }
+
+    public function testStoredNegativeAlphaIsClampedInHex(): void
+    {
+        $color = ColorValue::fromComponents('srgb', [1.0, 0.0, 0.0], -0.5);
+
+        self::assertSame('#ff000000', $color->toHex());
+    }
+
+    public function testFromHexAcceptsThreeDigitShorthand(): void
+    {
+        $color = ColorValue::fromHex('#abc');
+
+        self::assertSame('rgb(170 187 204)', $color->toRgb());
+        self::assertSame('#abc', $color->toHex());
+    }
+
+    public function testFromHexAcceptsFourDigitShorthandWithAlpha(): void
+    {
+        $color = ColorValue::fromHex('#f008');
+
+        self::assertSame('rgb(255 0 0 / 0.53)', $color->toRgb());
+    }
+
+    public function testFromHexRejectsSevenDigitTypo(): void
+    {
+        $this->expectException(TokenException::class);
+        $this->expectExceptionMessage('Invalid hex color');
+
+        ColorValue::fromHex('#ff00008');
+    }
+
+    public function testFromHexRejectsTenDigits(): void
+    {
+        $this->expectException(TokenException::class);
+        $this->expectExceptionMessage('Invalid hex color');
+
+        ColorValue::fromHex('#aabbccddee');
+    }
+
+    public function testFromHexRejectsDoubleHash(): void
+    {
+        $this->expectException(TokenException::class);
+        $this->expectExceptionMessage('Invalid hex color');
+
+        ColorValue::fromHex('##ff0000');
+    }
+
+    public function testFromHexRejectsNamedColor(): void
+    {
+        $this->expectException(TokenException::class);
+        $this->expectExceptionMessage('Invalid hex color');
+
+        ColorValue::fromHex('red');
+    }
+
+    public function testHugeInvalidHexProducesBoundedExceptionMessage(): void
+    {
+        try {
+            ColorValue::fromHex(str_repeat('f', 100_000));
+            self::fail('Expected a TokenException.');
+        } catch (TokenException $exception) {
+            self::assertLessThan(300, \strlen($exception->getMessage()));
+        }
+    }
+
+    public function testFromHexRejectsEmptyString(): void
+    {
+        $this->expectException(TokenException::class);
+        $this->expectExceptionMessage('Invalid hex color');
+
+        ColorValue::fromHex('');
+    }
+
+    public function testFromComponentsRejectsInvalidHexFallback(): void
+    {
+        $this->expectException(TokenException::class);
+        $this->expectExceptionMessage('Invalid hex color');
+
+        ColorValue::fromComponents('okhsv', [0.5, 0.5, 0.5], 1.0, 'red');
+    }
+
+    public function testOklchChromaBeyondConverterLimitThrowsTokenException(): void
+    {
+        // Chroma 0.9 is legal CSS but beyond what the sRGB converter accepts:
+        // the vendor exception must not leak through the TokenException contract.
+        $color = ColorValue::fromComponents('oklch', [0.7, 0.9, 30.0], 1.0);
+
+        $this->expectException(TokenException::class);
+        $this->expectExceptionMessage('Cannot convert color in space "oklch"');
+
+        $color->toHex();
+    }
+
+    public function testOklchNegativeHueIsNormalizedForConversion(): void
+    {
+        // -330deg ≡ 30deg: both must convert, to the same sRGB value.
+        $reference = ColorValue::fromComponents('oklch', [0.7, 0.15, 30.0], 1.0);
+        $negative = ColorValue::fromComponents('oklch', [0.7, 0.15, -330.0], 1.0);
+
+        self::assertSame($reference->toHex(), $negative->toHex());
     }
 }

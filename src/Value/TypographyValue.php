@@ -39,6 +39,11 @@ final readonly class TypographyValue implements TokenValueInterface
         );
     }
 
+    public function toCss(): string
+    {
+        return $this->__toString();
+    }
+
     public function fontFamily(): FontFamilyValue
     {
         return $this->fontFamilyValue;

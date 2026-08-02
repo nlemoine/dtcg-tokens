@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace n5s\DtcgTokens\Twig;
 
+use n5s\DtcgTokens\Exception\TokenException;
 use n5s\DtcgTokens\Tokens;
 use n5s\DtcgTokens\Value\ColorValue;
 use n5s\DtcgTokens\Value\TokenValueInterface;
@@ -27,7 +28,7 @@ final readonly class TokenExtension
     public function hex(TokenValueInterface $value): string
     {
         if (! $value instanceof ColorValue) {
-            throw new \LogicException(\sprintf('The "hex" filter can only be used on color tokens, got %s.', $value::class));
+            throw TokenException::invalidValue(\sprintf('The "hex" filter can only be used on color tokens, got %s.', $value::class));
         }
 
         return $value->toHex();
@@ -37,7 +38,7 @@ final readonly class TokenExtension
     public function rgb(TokenValueInterface $value, ?float $alpha = null): string
     {
         if (! $value instanceof ColorValue) {
-            throw new \LogicException(\sprintf('The "rgb" filter can only be used on color tokens, got %s.', $value::class));
+            throw TokenException::invalidValue(\sprintf('The "rgb" filter can only be used on color tokens, got %s.', $value::class));
         }
 
         return $value->toRgb($alpha);

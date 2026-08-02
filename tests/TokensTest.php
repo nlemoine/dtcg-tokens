@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace n5s\DtcgTokens\Tests;
 
 use n5s\DtcgTokens\Exception\TokenException;
+use n5s\DtcgTokens\Loader\TokenLoaderInterface;
 use n5s\DtcgTokens\Tokens;
 use n5s\DtcgTokens\Value\ColorValue;
 use n5s\DtcgTokens\Value\TokenValueInterface;
@@ -112,6 +113,122 @@ final class TokensTest extends TestCase
         // accent added by overrides, inherits group $type
         self::assertInstanceOf(ColorValue::class, $tokens->get('color.accent'));
         self::assertCount(3, $tokens);
+    }
+
+    public function testModesEnumeratesTheUnionOfDeclaredModes(): void
+    {
+        $tokens = Tokens::fromArray([
+            'color' => [
+                '$type' => 'color',
+                'fg' => [
+                    '$value' => '#ffffff',
+                    '$extensions' => [
+                        'mode' => [
+                            'dark' => '#000000',
+                        ],
+                    ],
+                ],
+            ],
+            'scale' => [
+                '$type' => 'number',
+                'factor' => [
+                    '$value' => 1.5,
+                    '$extensions' => [
+                        'mode' => [
+                            'dense' => 1.25,
+                            'dark' => 2.0,
+                        ],
+                    ],
+                ],
+            ],
+        ]);
+
+        self::assertEqualsCanonicalizing(['dark', 'dense'], $tokens->modes());
+    }
+
+    public function testModesIsEmptyWithoutMetadata(): void
+    {
+        $tokens = new Tokens([
+            'a' => ColorValue::fromHex('#ff0000'),
+        ]);
+
+        self::assertSame([], $tokens->modes());
+    }
+
+    public function testForModeBindsTheWholeCollection(): void
+    {
+        $tokens = Tokens::fromArray([
+            'color' => [
+                '$type' => 'color',
+                'fg' => [
+                    '$value' => '#ffffff',
+                    '$extensions' => [
+                        'mode' => [
+                            'dark' => '#000000',
+                        ],
+                    ],
+                ],
+                'accent' => [
+                    '$value' => '#ff0000',
+                ],
+            ],
+        ]);
+
+        $dark = $tokens->forMode('dark');
+
+        // Token with the mode switches; token without it keeps its base.
+        self::assertSame('rgb(0 0 0)', (string) $dark->get('color.fg'));
+        self::assertSame('rgb(255 0 0)', (string) $dark->get('color.accent'));
+        // The original collection is untouched (immutability).
+        self::assertSame('rgb(255 255 255)', (string) $tokens->get('color.fg'));
+        // Metadata is carried over.
+        self::assertSame(['dark'], $dark->metadata('color.fg')?->modes);
+    }
+
+    public function testMetadataCarriesDeclaredModes(): void
+    {
+        $tokens = Tokens::fromArray([
+            'color' => [
+                '$type' => 'color',
+                'fg' => [
+                    '$value' => '#ffffff',
+                    '$extensions' => [
+                        'mode' => [
+                            'dark' => '#000000',
+                        ],
+                    ],
+                ],
+                'plain' => [
+                    '$value' => '#123456',
+                ],
+            ],
+        ]);
+
+        self::assertSame(['dark'], $tokens->metadata('color.fg')?->modes);
+        self::assertSame([], $tokens->metadata('color.plain')?->modes);
+    }
+
+    public function testFromLoaderUsesTheGivenLoader(): void
+    {
+        // The base loader port must have a real consumer: a custom loader
+        // (HTTP, database, ...) plugs into the facade without touching files.
+        $loader = new class() implements TokenLoaderInterface {
+            public function load(): array
+            {
+                return [
+                    'color' => [
+                        '$type' => 'color',
+                        'custom' => [
+                            '$value' => '#00ff00',
+                        ],
+                    ],
+                ];
+            }
+        };
+
+        $tokens = Tokens::fromLoader($loader);
+
+        self::assertSame('rgb(0 255 0)', (string) $tokens->get('color.custom'));
     }
 
     public function testFromArray(): void

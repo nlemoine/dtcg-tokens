@@ -11,15 +11,23 @@ final readonly class LinkValue implements TokenValueInterface
 {
     /**
      * @internal
+     *
+     * @param array<string, self>|null $modes
      */
     public function __construct(
         private string $value,
+        private ?array $modes = null,
     ) {
     }
 
     public function __toString(): string
     {
         return $this->value;
+    }
+
+    public function toCss(): string
+    {
+        return $this->__toString();
     }
 
     public function value(): string
@@ -29,6 +37,6 @@ final readonly class LinkValue implements TokenValueInterface
 
     public function forMode(string $mode): static
     {
-        return $this;
+        return $this->modes[$mode] ?? $this;
     }
 }

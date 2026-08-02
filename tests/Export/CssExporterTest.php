@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace n5s\DtcgTokens\Tests\Export;
 
+use n5s\DtcgTokens\Exception\TokenException;
 use n5s\DtcgTokens\Export\CssExporter;
 use n5s\DtcgTokens\Tokens;
 use n5s\DtcgTokens\Value\ColorValue;
@@ -60,6 +61,112 @@ final class CssExporterTest extends TestCase
         $css = new CssExporter()->export($tokens);
 
         self::assertStringContainsString('--color-brand-primary: rgb(255 0 0);', $css);
+    }
+
+    public function testTokenPathThatWouldBreakOutOfPropertyNameIsRejected(): void
+    {
+        // Even a perfectly safe value is exploitable through its key: the
+        // path lands verbatim in the custom property name.
+        $tokens = new Tokens([
+            'brand-evil}*{display:none!important}html{--m' => ColorValue::fromHex('#000000'),
+        ]);
+
+        $this->expectException(TokenException::class);
+        $this->expectExceptionMessage('cannot be exported as a CSS custom property name');
+
+        new CssExporter()->export($tokens);
+    }
+
+    public function testStringValueThatWouldBreakOutOfDeclarationIsRejected(): void
+    {
+        $tokens = Tokens::fromArray([
+            'x' => [
+                '$type' => 'string',
+                '$value' => 'red; } body { display: none; } :root { --pwn: 1',
+            ],
+        ]);
+
+        $this->expectException(TokenException::class);
+        $this->expectExceptionMessage('break out of a CSS declaration');
+
+        new CssExporter()->export($tokens);
+    }
+
+    public function testValueContainingCommentOpenerIsRejected(): void
+    {
+        $tokens = Tokens::fromArray([
+            'x' => [
+                '$type' => 'string',
+                '$value' => 'red /* sneaky',
+            ],
+        ]);
+
+        $this->expectException(TokenException::class);
+        $this->expectExceptionMessage('break out of a CSS declaration');
+
+        new CssExporter()->export($tokens);
+    }
+
+    public function testCollidingVariableNamesAreRejected(): void
+    {
+        // "a.b" and "a b" both slug to --a-b; the cascade would silently pick
+        // the last declaration.
+        $tokens = new Tokens([
+            'a.b' => ColorValue::fromHex('#ff0000'),
+            'a b' => ColorValue::fromHex('#00ff00'),
+        ]);
+
+        $this->expectException(TokenException::class);
+        $this->expectExceptionMessage('both map to the CSS custom property "--a-b"');
+
+        new CssExporter()->export($tokens);
+    }
+
+    public function testNonAsciiTokenPathExports(): void
+    {
+        // CSS custom property names allow non-ASCII identifiers.
+        $tokens = Tokens::fromArray([
+            'thème' => [
+                '$type' => 'color',
+                'primaire' => [
+                    '$value' => '#ff0000',
+                ],
+            ],
+        ]);
+
+        $css = new CssExporter()->export($tokens);
+
+        self::assertStringContainsString('--thème-primaire: rgb(255 0 0);', $css);
+    }
+
+    public function testThemedExportViaForMode(): void
+    {
+        // The primary use case for modes: rendering a [data-theme] block.
+        $tokens = Tokens::fromArray([
+            'color' => [
+                '$type' => 'color',
+                'fg' => [
+                    '$value' => '#ffffff',
+                    '$extensions' => [
+                        'mode' => [
+                            'dark' => '#000000',
+                        ],
+                    ],
+                ],
+            ],
+        ]);
+
+        $css = new CssExporter(selector: '[data-theme="dark"]')->export($tokens->forMode('dark'));
+
+        self::assertSame(
+            <<<'CSS'
+            [data-theme="dark"] {
+              --color-fg: rgb(0 0 0);
+            }
+
+            CSS,
+            $css,
+        );
     }
 
     private function tokens(): Tokens

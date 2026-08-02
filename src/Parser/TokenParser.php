@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace n5s\DtcgTokens\Parser;
 
 use n5s\DtcgTokens\Exception\TokenException;
+use n5s\DtcgTokens\Internal\Str;
 use n5s\DtcgTokens\Value\BooleanValue;
 use n5s\DtcgTokens\Value\BorderValue;
 use n5s\DtcgTokens\Value\ColorValue;
@@ -22,7 +23,10 @@ use n5s\DtcgTokens\Value\TransitionValue;
 use n5s\DtcgTokens\Value\TypographyValue;
 
 /**
- * @phpstan-type RawEntry array{type: string|null, value: mixed, modes?: array<string, mixed>, description: string|null, deprecated: bool}
+ * Mode keys are int|string: PHP canonicalizes numeric JSON keys ("2024") to
+ * ints; they are normalized back to strings by effectiveModes().
+ *
+ * @phpstan-type RawEntry array{type: string|null, value: mixed, modes?: array<int|string, mixed>, description: string|null, deprecated: bool}
  */
 final class TokenParser
 {
@@ -54,6 +58,12 @@ final class TokenParser
     private const array LINE_CAPS = ['round', 'butt', 'square'];
 
     /**
+     * Unit applied when DTCG implies pixels: legacy bare-number dimensions,
+     * bare-number dash lengths, and omitted shadow blur/spread.
+     */
+    private const string DEFAULT_DIMENSION_UNIT = 'px';
+
+    /**
      * Parse a raw DTCG token tree into typed value objects plus metadata.
      *
      * @param array<string, mixed> $raw
@@ -67,24 +77,32 @@ final class TokenParser
 
         // Step 2: Resolve each token in every mode it (transitively) supports,
         // then build typed value objects carrying their per-mode siblings.
+        $resolver = new AliasResolver($entries);
+
         /** @var array<string, TokenValueInterface> $tokens */
         $tokens = [];
         /** @var array<string, TokenMetadata> $metadata */
         $metadata = [];
         foreach ($entries as $path => $entry) {
-            $base = $this->resolveInMode($path, null, $entries, []);
+            try {
+                $base = $resolver->resolve($path, null);
 
-            $modeValues = null;
-            $modeSet = $this->effectiveModes($path, $entries, []);
-            if ($modeSet !== []) {
-                $modeValues = [];
-                foreach ($modeSet as $mode) {
-                    $modeValues[$mode] = $this->resolveInMode($path, $mode, $entries, []);
+                $modeValues = null;
+                $modeSet = $resolver->effectiveModes($path);
+                if ($modeSet !== []) {
+                    $modeValues = [];
+                    foreach ($modeSet as $mode) {
+                        $modeValues[$mode] = $resolver->resolve($path, $mode);
+                    }
                 }
-            }
 
-            $tokens[$path] = $this->buildValue($entry['type'], $base, $modeValues);
-            $metadata[$path] = new TokenMetadata($entry['description'], $entry['deprecated']);
+                $tokens[$path] = $this->buildValue($entry['type'], $base, $modeValues);
+                $metadata[$path] = new TokenMetadata($entry['description'], $entry['deprecated'], $modeSet);
+            } catch (TokenException $exception) {
+                // On a large file, a type-scoped message without the token
+                // path is close to useless.
+                throw TokenException::inToken($path, $exception);
+            }
         }
 
         return new ParseResult($tokens, $metadata);
@@ -98,8 +116,7 @@ final class TokenParser
      */
     private function walkTree(array $node, string $prefix, ?string $inheritedType, bool $inheritedDeprecated, array &$entries): void
     {
-        /** @var string|null $groupType */
-        $groupType = $node['$type'] ?? $inheritedType;
+        $groupType = $this->stringTypeOf($node) ?? $inheritedType;
         $groupDeprecated = \array_key_exists('$deprecated', $node)
             ? $this->normalizeDeprecated($node['$deprecated'])
             : $inheritedDeprecated;
@@ -119,11 +136,15 @@ final class TokenParser
             $path = $prefix === '' ? $key : $prefix . '.' . $key;
 
             if (\array_key_exists('$value', $child)) {
+                if (isset($entries[$path])) {
+                    throw TokenException::duplicatePath($path);
+                }
+
                 $description = $child['$description'] ?? null;
 
                 /** @var RawEntry $entry */
                 $entry = [
-                    'type' => $child['$type'] ?? $groupType,
+                    'type' => $this->stringTypeOf($child) ?? $groupType,
                     'value' => $child['$value'],
                     'description' => \is_string($description) ? $description : null,
                     'deprecated' => \array_key_exists('$deprecated', $child)
@@ -132,16 +153,38 @@ final class TokenParser
                 ];
 
                 if (isset($child['$extensions']) && \is_array($child['$extensions']) && isset($child['$extensions']['mode'])) {
-                    /** @var array<string, mixed> $mode */
                     $mode = $child['$extensions']['mode'];
+                    if (! \is_array($mode)) {
+                        throw TokenException::invalidValue(\sprintf(
+                            '$extensions.mode must be an object mapping mode names to values, got %s.',
+                            get_debug_type($mode),
+                        ));
+                    }
+
                     $entry['modes'] = $mode;
                 }
 
                 $entries[$path] = $entry;
             } else {
-                $this->walkTree($child, $path, \is_string($groupType) ? $groupType : null, $groupDeprecated, $entries);
+                $this->walkTree($child, $path, $groupType, $groupDeprecated, $entries);
             }
         }
+    }
+
+    /**
+     * Read a node's `$type`, requiring it to be a string when present.
+     *
+     * @param array<string|int, mixed> $node
+     */
+    private function stringTypeOf(array $node): ?string
+    {
+        $type = $node['$type'] ?? null;
+
+        if ($type !== null && ! \is_string($type)) {
+            throw TokenException::invalidValue(\sprintf('$type must be a string, got %s.', get_debug_type($type)));
+        }
+
+        return $type;
     }
 
     /**
@@ -157,126 +200,9 @@ final class TokenParser
     }
 
     /**
-     * Resolve a token's value for a given mode (null = base value), following
-     * aliases in that same mode and falling back to a referenced token's base
-     * value when it does not itself declare the mode.
-     *
-     * @param array<string, RawEntry> $entries
-     * @param list<string> $chain Visited token paths, for cycle detection
-     */
-    private function resolveInMode(string $path, ?string $mode, array $entries, array $chain): mixed
-    {
-        if (\in_array($path, $chain, true)) {
-            throw TokenException::circularAlias($path, $chain);
-        }
-
-        $entry = $entries[$path];
-        $raw = $mode !== null && isset($entry['modes']) && \array_key_exists($mode, $entry['modes'])
-            ? $entry['modes'][$mode]
-            : $entry['value'];
-
-        return $this->resolveValueInMode($raw, $mode, $entries, [...$chain, $path]);
-    }
-
-    /**
-     * Resolve any aliases contained in a raw value, each in the given mode.
-     *
-     * @param array<string, RawEntry> $entries
-     * @param list<string> $chain
-     */
-    private function resolveValueInMode(mixed $value, ?string $mode, array $entries, array $chain): mixed
-    {
-        if (\is_array($value)) {
-            foreach ($value as $k => $v) {
-                $value[$k] = $this->resolveValueInMode($v, $mode, $entries, $chain);
-            }
-
-            return $value;
-        }
-
-        if (! \is_string($value)) {
-            return $value;
-        }
-
-        // Check for alias pattern: {some.path}
-        if (preg_match('/^\{(.+)}$/', $value, $matches) === 1) {
-            $aliasPath = $matches[1];
-
-            if (! isset($entries[$aliasPath])) {
-                throw TokenException::brokenAlias($value, $chain[0] ?? $aliasPath);
-            }
-
-            return $this->resolveInMode($aliasPath, $mode, $entries, $chain);
-        }
-
-        return $value;
-    }
-
-    /**
-     * The full set of mode names a token resolves to: its own declared modes,
-     * or - when it declares none - the modes hoisted from the tokens it aliases
-     * (directly or nested inside a composite value), resolved transitively.
-     *
-     * @param array<string, RawEntry> $entries
-     * @param list<string> $visiting Cycle guard
-     *
-     * @return list<string>
-     */
-    private function effectiveModes(string $path, array $entries, array $visiting): array
-    {
-        if (\in_array($path, $visiting, true)) {
-            return [];
-        }
-
-        $entry = $entries[$path];
-        if (isset($entry['modes']) && $entry['modes'] !== []) {
-            return array_keys($entry['modes']);
-        }
-
-        /** @var array<string, true> $modes */
-        $modes = [];
-        foreach ($this->collectAliasTargets($entry['value']) as $target) {
-            if (! isset($entries[$target])) {
-                continue;
-            }
-
-            foreach ($this->effectiveModes($target, $entries, [...$visiting, $path]) as $mode) {
-                $modes[$mode] = true;
-            }
-        }
-
-        return array_keys($modes);
-    }
-
-    /**
-     * Collect every alias target path referenced anywhere within a raw value.
-     *
-     * @return list<string>
-     */
-    private function collectAliasTargets(mixed $value): array
-    {
-        if (\is_array($value)) {
-            $targets = [];
-            foreach ($value as $v) {
-                foreach ($this->collectAliasTargets($v) as $target) {
-                    $targets[] = $target;
-                }
-            }
-
-            return $targets;
-        }
-
-        if (\is_string($value) && preg_match('/^\{(.+)}$/', $value, $matches) === 1) {
-            return [$matches[1]];
-        }
-
-        return [];
-    }
-
-    /**
      * Build a typed value object from a resolved base value plus its per-mode
-     * resolved values. Mode support covers the DTCG-spec types only; the
-     * non-spec extras (boolean, string, link) ignore modes.
+     * resolved values. Every token type is mode-aware, including the non-spec
+     * extras (boolean, string, link).
      *
      * @param array<string, mixed>|null $modes Resolved raw value per mode
      */
@@ -289,9 +215,9 @@ final class TokenParser
             'fontFamily' => $this->buildFontFamily($value, $modes),
             'fontWeight' => $this->buildFontWeight($value, $modes),
             'number' => $this->buildNumber($value, $modes),
-            'boolean' => new BooleanValue((bool) $value),
-            'string' => new StringValue($this->requireScalar($value, 'string')),
-            'link' => new LinkValue($this->requireScalar($value, 'link')),
+            'boolean' => $this->buildBoolean($value, $modes),
+            'string' => $this->buildString($value, $modes),
+            'link' => $this->buildLink($value, $modes),
             'cubicBezier' => $this->buildCubicBezier($value, $modes),
             'strokeStyle' => $this->buildStrokeStyle($value, $modes),
             'border' => $this->buildBorder($value, $modes),
@@ -369,15 +295,67 @@ final class TokenParser
     }
 
     /**
+     * Ensure a value is a finite number and cast it to float, else throw.
+     */
+    private function requireNumeric(mixed $value, string $context): float
+    {
+        if (! is_numeric($value)) {
+            throw TokenException::invalidValue(\sprintf('%s must be numeric, got %s.', $context, get_debug_type($value)));
+        }
+
+        $float = (float) $value;
+        if (! is_finite($float)) {
+            // is_numeric("1e999") is true but overflows to INF, which would
+            // serialize as "inf" in CSS output.
+            throw TokenException::invalidValue(\sprintf('%s must be a finite number.', $context));
+        }
+
+        return $float;
+    }
+
+    /**
+     * @param array<string, mixed>|null $modes
+     */
+    private function buildBoolean(mixed $value, ?array $modes = null): BooleanValue
+    {
+        if (! \is_bool($value)) {
+            throw TokenException::invalidValue(\sprintf('boolean token expects a bool value, got %s.', get_debug_type($value)));
+        }
+
+        return new BooleanValue($value, $this->buildModeMap($modes, fn (mixed $v): BooleanValue => $this->buildBoolean($v)));
+    }
+
+    /**
+     * @param array<string, mixed>|null $modes
+     */
+    private function buildString(mixed $value, ?array $modes = null): StringValue
+    {
+        return new StringValue(
+            $this->requireScalar($value, 'string'),
+            $this->buildModeMap($modes, fn (mixed $v): StringValue => $this->buildString($v)),
+        );
+    }
+
+    /**
+     * @param array<string, mixed>|null $modes
+     */
+    private function buildLink(mixed $value, ?array $modes = null): LinkValue
+    {
+        return new LinkValue(
+            $this->requireScalar($value, 'link'),
+            $this->buildModeMap($modes, fn (mixed $v): LinkValue => $this->buildLink($v)),
+        );
+    }
+
+    /**
      * @param array<string, mixed>|null $modes
      */
     private function buildNumber(mixed $value, ?array $modes = null): NumberValue
     {
-        if (! is_numeric($value)) {
-            throw TokenException::invalidValue(\sprintf('number token expects a numeric value, got %s.', get_debug_type($value)));
-        }
-
-        return new NumberValue((float) $value, $this->buildModeMap($modes, fn (mixed $v): NumberValue => $this->buildNumber($v)));
+        return new NumberValue(
+            $this->requireNumeric($value, 'number token value'),
+            $this->buildModeMap($modes, fn (mixed $v): NumberValue => $this->buildNumber($v)),
+        );
     }
 
     /**
@@ -388,11 +366,20 @@ final class TokenParser
         $modeMap = $this->buildModeMap($modes, fn (mixed $v): FontFamilyValue => $this->buildFontFamily($v));
 
         if (\is_string($value)) {
+            if ($value === '') {
+                throw TokenException::invalidValue('FontFamily token value must not be empty.');
+            }
+
             return new FontFamilyValue([$value], $modeMap);
         }
 
         if (! \is_array($value)) {
             throw TokenException::invalidValue('FontFamily token value must be a string or array of strings.');
+        }
+
+        if ($value === []) {
+            // An empty list would render "--x: ;" — invalid CSS.
+            throw TokenException::invalidValue('FontFamily token value must contain at least one family.');
         }
 
         /** @var list<string> $families */
@@ -418,7 +405,7 @@ final class TokenParser
         if (\is_string($value) && ! is_numeric($value)) {
             $lower = strtolower($value);
             if (! isset(self::FONT_WEIGHT_MAP[$lower])) {
-                throw TokenException::invalidValue(\sprintf('unknown fontWeight keyword "%s".', $value));
+                throw TokenException::invalidValue(\sprintf('unknown fontWeight keyword "%s".', Str::excerpt($value)));
             }
 
             return new NumberValue((float) self::FONT_WEIGHT_MAP[$lower], $modeMap);
@@ -446,19 +433,30 @@ final class TokenParser
 
         // legacy: bare number treated as px
         if (is_numeric($value)) {
-            return new DimensionValue((float) $value, 'px', $modeMap);
+            return new DimensionValue(
+                $this->requireNumeric($value, 'Dimension token value'),
+                self::DEFAULT_DIMENSION_UNIT,
+                $modeMap,
+            );
         }
 
         $value = $this->requireArray($value, 'Dimension token value');
 
-        /** @var int|float $dimValue */
-        $dimValue = $this->requireKey($value, 'value', 'Dimension token value');
+        $dimValue = $this->requireNumeric(
+            $this->requireKey($value, 'value', 'Dimension token value'),
+            'Dimension token value "value"',
+        );
         $dimUnit = $this->requireUnit($value, self::DIMENSION_UNITS, 'Dimension token value');
 
-        return new DimensionValue((float) $dimValue, $dimUnit, $modeMap);
+        return new DimensionValue($dimValue, $dimUnit, $modeMap);
     }
 
     /**
+     * Durations are deliberately carried by {@see DimensionValue} with an
+     * `ms`/`s` unit: the serialization ("200ms") and the value/unit surface
+     * are identical to dimensions, so a dedicated class would only duplicate
+     * it. The unit set is what distinguishes the two at parse time.
+     *
      * @param array<string, mixed>|null $modes
      */
     private function buildDuration(mixed $value, ?array $modes = null): DimensionValue
@@ -467,11 +465,13 @@ final class TokenParser
 
         $value = $this->requireArray($value, 'Duration token value');
 
-        /** @var int|float $durValue */
-        $durValue = $this->requireKey($value, 'value', 'Duration token value');
+        $durValue = $this->requireNumeric(
+            $this->requireKey($value, 'value', 'Duration token value'),
+            'Duration token value "value"',
+        );
         $durUnit = $this->requireUnit($value, self::DURATION_UNITS, 'Duration token value');
 
-        return new DimensionValue((float) $durValue, $durUnit, $modeMap);
+        return new DimensionValue($durValue, $durUnit, $modeMap);
     }
 
     /**
@@ -488,7 +488,7 @@ final class TokenParser
             throw TokenException::invalidValue(\sprintf(
                 '%s has invalid unit "%s"; expected one of %s.',
                 $context,
-                \is_string($unit) ? $unit : get_debug_type($unit),
+                \is_string($unit) ? Str::excerpt($unit) : get_debug_type($unit),
                 implode(', ', $allowed),
             ));
         }
@@ -516,25 +516,44 @@ final class TokenParser
         }
 
         if (\is_array($value) && isset($value['colorSpace'])) {
-            /** @var string $colorSpace */
             $colorSpace = $value['colorSpace'];
+            if (! \is_string($colorSpace)) {
+                throw TokenException::invalidValue(\sprintf(
+                    'DTCG color "colorSpace" must be a string, got %s.',
+                    get_debug_type($colorSpace),
+                ));
+            }
 
-            /** @var list<float|null>|null $rawComponents */
             $rawComponents = $value['channels'] ?? $value['components'] ?? null;
             if ($rawComponents === null) {
                 throw TokenException::invalidValue('DTCG color must have "channels" or "components".');
             }
 
-            $components = [];
-            foreach ($rawComponents as $component) {
-                $components[] = $component === null ? null : (float) $component;
+            if (! \is_array($rawComponents)) {
+                throw TokenException::invalidValue(\sprintf(
+                    'DTCG color channels must be an array of numbers, got %s.',
+                    get_debug_type($rawComponents),
+                ));
             }
 
-            /** @var int|float $alpha */
-            $alpha = $value['alpha'] ?? 1.0;
+            $components = [];
+            foreach ($rawComponents as $component) {
+                if ($component !== null && ! is_numeric($component)) {
+                    throw TokenException::invalidValue(\sprintf(
+                        'DTCG color channel must be numeric or null, got %s.',
+                        get_debug_type($component),
+                    ));
+                }
+
+                $components[] = $component === null
+                    ? null
+                    : $this->requireNumeric($component, 'DTCG color channel');
+            }
+
+            $alpha = $this->requireNumeric($value['alpha'] ?? 1.0, 'DTCG color "alpha"');
             $hex = isset($value['hex']) && \is_string($value['hex']) ? $value['hex'] : null;
 
-            return ColorValue::fromComponents($colorSpace, $components, (float) $alpha, $hex, $modes);
+            return ColorValue::fromComponents($colorSpace, $components, $alpha, $hex, $modes);
         }
 
         throw TokenException::invalidValue('Color token value must be a hex string or DTCG color object.');
@@ -561,8 +580,7 @@ final class TokenParser
             if (\is_array($lh) && isset($lh['value'], $lh['unit'])) {
                 $lineHeight = $this->buildDimension($lh);
             } else {
-                /** @var int|float $lh */
-                $lineHeight = new NumberValue((float) $lh);
+                $lineHeight = new NumberValue($this->requireNumeric($lh, 'Typography lineHeight'));
             }
         }
 
@@ -577,7 +595,17 @@ final class TokenParser
             }
         }
 
-        return new TypographyValue($fontFamily, $fontSize, $fontWeight, $letterSpacing, $lineHeight, $extras, $modeMap);
+        // Named arguments: params 4 and 5 have overlapping nullable types, so
+        // a positional swap would type-check silently.
+        return new TypographyValue(
+            fontFamilyValue: $fontFamily,
+            fontSizeValue: $fontSize,
+            fontWeightValue: $fontWeight,
+            letterSpacingValue: $letterSpacing,
+            lineHeightValue: $lineHeight,
+            extras: $extras,
+            modes: $modeMap,
+        );
     }
 
     /**
@@ -589,6 +617,11 @@ final class TokenParser
 
         if (! \is_array($value)) {
             throw TokenException::invalidValue('Gradient token value must be an array of color stops.');
+        }
+
+        if ($value === []) {
+            // "linear-gradient()" is invalid CSS.
+            throw TokenException::invalidValue('Gradient token value must contain at least one color stop.');
         }
 
         /** @var list<array{color: ColorValue, position: float}> $stops */
@@ -667,7 +700,10 @@ final class TokenParser
                         $dashArray[] = $this->buildDimension($entry);
                     } elseif (is_numeric($entry)) {
                         // Bare number: DTCG implies pixels for dash lengths.
-                        $dashArray[] = new DimensionValue((float) $entry, 'px');
+                        $dashArray[] = new DimensionValue(
+                            $this->requireNumeric($entry, 'StrokeStyle dashArray entry'),
+                            self::DEFAULT_DIMENSION_UNIT,
+                        );
                     }
                 }
             }
@@ -709,12 +745,7 @@ final class TokenParser
 
         $floats = [];
         for ($i = 0; $i < 4; $i++) {
-            $num = $nums[$i];
-            if (! is_numeric($num)) {
-                throw TokenException::invalidValue(\sprintf('CubicBezier token value entry %d must be numeric, got %s.', $i, get_debug_type($num)));
-            }
-
-            $floats[] = (float) $num;
+            $floats[] = $this->requireNumeric($nums[$i], \sprintf('CubicBezier token value entry %d', $i));
         }
 
         // The x coordinates (control points 0 and 2) must lie in [0, 1]; y is free.
@@ -741,6 +772,11 @@ final class TokenParser
     {
         if (! \is_array($value)) {
             throw TokenException::invalidValue('Shadow token value must be an object or array of objects.');
+        }
+
+        if ($value === []) {
+            // Zero layers would render "--x: ;" — invalid CSS.
+            throw TokenException::invalidValue('Shadow token value must contain at least one layer.');
         }
 
         $modeShadows = $this->buildModeMap($modes, fn (mixed $v): ShadowValue => $this->buildShadow($v));
@@ -803,18 +839,17 @@ final class TokenParser
     private function shadowDimension(array $layer, string $key, bool $required): DimensionValue
     {
         if (! $required && ! \array_key_exists($key, $layer)) {
-            return new DimensionValue(0.0, 'px');
+            return new DimensionValue(0.0, self::DEFAULT_DIMENSION_UNIT);
         }
 
         $dimension = $this->requireArray($this->requireKey($layer, $key, 'Shadow layer'), \sprintf('Shadow layer "%s"', $key));
 
-        $component = $this->requireKey($dimension, 'value', \sprintf('Shadow layer "%s"', $key));
-        if (! is_numeric($component)) {
-            throw TokenException::invalidValue(\sprintf('Shadow layer "%s" value must be numeric, got %s.', $key, get_debug_type($component)));
-        }
-
+        $component = $this->requireNumeric(
+            $this->requireKey($dimension, 'value', \sprintf('Shadow layer "%s"', $key)),
+            \sprintf('Shadow layer "%s" value', $key),
+        );
         $unit = $this->requireUnit($dimension, self::DIMENSION_UNITS, \sprintf('Shadow layer "%s"', $key));
 
-        return new DimensionValue((float) $component, $unit);
+        return new DimensionValue($component, $unit);
     }
 }

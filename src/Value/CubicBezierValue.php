@@ -31,6 +31,19 @@ final readonly class CubicBezierValue implements TokenValueInterface
         );
     }
 
+    public function toCss(): string
+    {
+        return $this->__toString();
+    }
+
+    /**
+     * @return array{float, float, float, float}
+     */
+    public function points(): array
+    {
+        return $this->points;
+    }
+
     public function forMode(string $mode): static
     {
         return $this->modes[$mode] ?? $this;

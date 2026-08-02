@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace n5s\DtcgTokens\Tests\Twig;
 
+use n5s\DtcgTokens\Exception\TokenException;
 use n5s\DtcgTokens\Tokens;
 use n5s\DtcgTokens\Twig\TokenExtension;
 use n5s\DtcgTokens\Value\DimensionValue;
@@ -65,7 +66,7 @@ final class TokenExtensionTest extends TestCase
             self::fail('Expected a RuntimeError to be thrown.');
         } catch (RuntimeError $error) {
             $previous = $error->getPrevious();
-            self::assertInstanceOf(\LogicException::class, $previous);
+            self::assertInstanceOf(TokenException::class, $previous);
             self::assertSame(
                 \sprintf('The "hex" filter can only be used on color tokens, got %s.', DimensionValue::class),
                 $previous->getMessage(),
