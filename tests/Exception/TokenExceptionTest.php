@@ -5,15 +5,53 @@ declare(strict_types=1);
 namespace n5s\DtcgTokens\Tests\Exception;
 
 use n5s\DtcgTokens\Exception\TokenException;
+use n5s\DtcgTokens\Exception\TokenFileException;
+use n5s\DtcgTokens\Exception\TokenNotFoundException;
+use n5s\DtcgTokens\Exception\TokenParseException;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
 
 #[CoversClass(TokenException::class)]
+#[CoversClass(TokenFileException::class)]
+#[CoversClass(TokenNotFoundException::class)]
+#[CoversClass(TokenParseException::class)]
 final class TokenExceptionTest extends TestCase
 {
     public function testIsRuntimeException(): void
     {
         self::assertInstanceOf(\RuntimeException::class, TokenException::unknownPath('a.b'));
+    }
+
+    public function testLookupFailureIsATokenNotFoundException(): void
+    {
+        self::assertInstanceOf(TokenNotFoundException::class, TokenException::unknownPath('a.b'));
+    }
+
+    public function testFileFailuresAreTokenFileExceptions(): void
+    {
+        // "Fix your deployment" errors, distinguishable from token-content ones.
+        self::assertInstanceOf(TokenFileException::class, TokenException::fileNotReadable('/x.json'));
+        self::assertInstanceOf(TokenFileException::class, TokenException::notAnObject('/x.json', 'string'));
+        self::assertInstanceOf(TokenFileException::class, TokenException::invalidJson('/x.json', new \JsonException('boom')));
+    }
+
+    public function testTokenContentFailuresAreTokenParseExceptions(): void
+    {
+        self::assertInstanceOf(TokenParseException::class, TokenException::invalidValue('boom'));
+        self::assertInstanceOf(TokenParseException::class, TokenException::brokenAlias('{x}', 'a'));
+        self::assertInstanceOf(TokenParseException::class, TokenException::circularAlias('a', ['a']));
+        self::assertInstanceOf(TokenParseException::class, TokenException::unsupportedType('weird'));
+        self::assertInstanceOf(TokenParseException::class, TokenException::unsupportedColorSpace('cmyk'));
+        self::assertInstanceOf(TokenParseException::class, TokenException::duplicatePath('a.b'));
+        self::assertInstanceOf(TokenParseException::class, TokenException::colorConversionFailed('oklch', new \RuntimeException('x')));
+        self::assertInstanceOf(TokenParseException::class, TokenException::inToken('a.b', TokenException::invalidValue('boom')));
+    }
+
+    public function testEverySubtypeRemainsCatchableAsTokenException(): void
+    {
+        self::assertInstanceOf(TokenException::class, TokenException::unknownPath('a'));
+        self::assertInstanceOf(TokenException::class, TokenException::fileNotReadable('/x'));
+        self::assertInstanceOf(TokenException::class, TokenException::invalidValue('x'));
     }
 
     public function testUnknownPath(): void

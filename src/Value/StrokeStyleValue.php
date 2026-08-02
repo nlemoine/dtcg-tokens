@@ -65,6 +65,11 @@ final readonly class StrokeStyleValue implements TokenValueInterface
         return new self(dashArray: $dashArray, lineCap: $lineCap, modes: $modes);
     }
 
+    public function toCss(): string
+    {
+        return $this->__toString();
+    }
+
     public function forMode(string $mode): static
     {
         return $this->modes[$mode] ?? $this;

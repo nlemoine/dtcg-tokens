@@ -24,6 +24,11 @@ final readonly class NumberValue implements TokenValueInterface
         return Number::format($this->value);
     }
 
+    public function toCss(): string
+    {
+        return $this->__toString();
+    }
+
     public function value(): float
     {
         return $this->value;

@@ -355,10 +355,10 @@ final class ModeResolutionTest extends TestCase
         self::assertSame('32px', (string) $restored->forMode('dark'));
     }
 
-    public function testNonSpecBooleanTypeIgnoresModes(): void
+    public function testBooleanTokenIsModeAware(): void
     {
-        // boolean/string/link are non-spec extras and intentionally remain
-        // non-mode-aware: a declared mode falls back to the base value.
+        // The author declared a mode: honoring it beats silently producing
+        // the base value.
         $tokens = Tokens::fromArray([
             'flag' => [
                 '$type' => 'boolean',
@@ -374,7 +374,48 @@ final class ModeResolutionTest extends TestCase
         ]);
 
         self::assertSame('true', (string) $tokens->get('flag.enabled'));
-        self::assertSame('true', (string) $tokens->get('flag.enabled', 'dark'));
+        self::assertSame('false', (string) $tokens->get('flag.enabled', 'dark'));
+    }
+
+    public function testStringTokenIsModeAware(): void
+    {
+        $tokens = Tokens::fromArray([
+            'copy' => [
+                '$type' => 'string',
+                'tagline' => [
+                    '$value' => 'Light and airy',
+                    '$extensions' => [
+                        'mode' => [
+                            'dark' => 'Dark and moody',
+                        ],
+                    ],
+                ],
+            ],
+        ]);
+
+        self::assertSame('Light and airy', (string) $tokens->get('copy.tagline'));
+        self::assertSame('Dark and moody', (string) $tokens->get('copy.tagline', 'dark'));
+    }
+
+    public function testLinkTokenIsModeAware(): void
+    {
+        // The canonical case: a different logo asset per theme.
+        $tokens = Tokens::fromArray([
+            'asset' => [
+                '$type' => 'link',
+                'logo' => [
+                    '$value' => '/logo-light.svg',
+                    '$extensions' => [
+                        'mode' => [
+                            'dark' => '/logo-dark.svg',
+                        ],
+                    ],
+                ],
+            ],
+        ]);
+
+        self::assertSame('/logo-light.svg', (string) $tokens->get('asset.logo'));
+        self::assertSame('/logo-dark.svg', (string) $tokens->get('asset.logo', 'dark'));
     }
 
     public function testDurationTokenIsModeAware(): void

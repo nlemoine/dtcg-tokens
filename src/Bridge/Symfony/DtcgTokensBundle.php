@@ -13,6 +13,7 @@ use Symfony\Component\Config\Definition\Configurator\DefinitionConfigurator;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\Loader\Configurator\ContainerConfigurator;
 use Symfony\Component\HttpKernel\Bundle\AbstractBundle;
+use Twig\Environment;
 use Twig\Extension\AttributeExtension;
 use function Symfony\Component\DependencyInjection\Loader\Configurator\service;
 
@@ -70,8 +71,17 @@ final class DtcgTokensBundle extends AbstractBundle
         $services->set(Tokens::class)
             ->factory([service(CachedTokenFactory::class), 'create']);
 
-        if (! class_exists(AttributeExtension::class)) {
+        if (! class_exists(Environment::class)) {
+            // Twig is not installed: nothing to integrate.
             return;
+        }
+
+        if (! class_exists(AttributeExtension::class)) {
+            // Twig is installed but too old — disappearing silently would be
+            // worse than failing the container build with a clear message.
+            throw new \LogicException(
+                'The n5s/dtcg-tokens Twig integration requires twig/twig >= 3.21 (Twig\Extension\AttributeExtension). Upgrade twig/twig, or remove it to skip the integration.',
+            );
         }
 
         $services->set(TokenExtension::class)

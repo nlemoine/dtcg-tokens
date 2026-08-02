@@ -274,6 +274,7 @@ final class TokenParserTest extends TestCase
     public function testFontWeightOutOfRangeThrows(): void
     {
         $this->expectException(TokenException::class);
+        $this->expectExceptionMessage('must be an integer between 1 and 1000');
 
         $this->parser->parse([
             'w' => [
@@ -314,6 +315,7 @@ final class TokenParserTest extends TestCase
     public function testCubicBezierXOutOfRangeThrows(): void
     {
         $this->expectException(TokenException::class);
+        $this->expectExceptionMessage('x coordinate at index 0 must be in [0, 1]');
 
         $this->parser->parse([
             'ease' => [
@@ -338,6 +340,7 @@ final class TokenParserTest extends TestCase
     public function testGradientStopPositionOutOfRangeThrows(): void
     {
         $this->expectException(TokenException::class);
+        $this->expectExceptionMessage('Gradient stop position must be a number in [0, 1]');
 
         $this->parser->parse([
             'g' => [
@@ -525,6 +528,7 @@ final class TokenParserTest extends TestCase
     public function testStrokeStyleKeywordTypoThrows(): void
     {
         $this->expectException(TokenException::class);
+        $this->expectExceptionMessage('Invalid strokeStyle keyword "soild"');
 
         $this->parser->parse([
             's' => [
@@ -537,6 +541,7 @@ final class TokenParserTest extends TestCase
     public function testStrokeStyleObjectInvalidLineCapThrows(): void
     {
         $this->expectException(TokenException::class);
+        $this->expectExceptionMessage('Invalid strokeStyle lineCap "flat"');
 
         $this->parser->parse([
             's' => [
@@ -1026,6 +1031,7 @@ final class TokenParserTest extends TestCase
     public function testCubicBezierWithThreeEntriesThrows(): void
     {
         $this->expectException(TokenException::class);
+        $this->expectExceptionMessage('must be an array of 4 numbers, got 3');
 
         $this->parser->parse([
             'ease' => [
@@ -1368,5 +1374,577 @@ final class TokenParserTest extends TestCase
                 ],
             ],
         ]);
+    }
+
+    public function testGroupTypeNotAStringThrows(): void
+    {
+        $this->expectException(TokenException::class);
+        $this->expectExceptionMessage('$type must be a string, got array.');
+
+        $this->parser->parse([
+            'g' => [
+                '$type' => ['color'],
+                'a' => [
+                    '$value' => '#ff0000',
+                ],
+            ],
+        ]);
+    }
+
+    public function testTokenTypeNotAStringThrows(): void
+    {
+        $this->expectException(TokenException::class);
+        $this->expectExceptionMessage('$type must be a string, got int.');
+
+        $this->parser->parse([
+            't' => [
+                '$type' => 42,
+                '$value' => 'x',
+            ],
+        ]);
+    }
+
+    public function testModeExtensionNotAnObjectThrows(): void
+    {
+        $this->expectException(TokenException::class);
+        $this->expectExceptionMessage('$extensions.mode must be an object');
+
+        $this->parser->parse([
+            'c' => [
+                '$type' => 'color',
+                '$value' => '#ff0000',
+                '$extensions' => [
+                    'mode' => 'dark',
+                ],
+            ],
+        ]);
+    }
+
+    public function testNumericModeNamesAreSupported(): void
+    {
+        // JSON object keys like "2024" become PHP int keys; they are valid
+        // DTCG mode names and must not crash the parser.
+        $result = $this->parser->parse([
+            'c' => [
+                '$type' => 'color',
+                '$value' => '#ffffff',
+                '$extensions' => [
+                    'mode' => [
+                        '2024' => '#000000',
+                    ],
+                ],
+            ],
+        ]);
+
+        $value = $result->values['c'];
+        self::assertInstanceOf(ColorValue::class, $value);
+        self::assertSame('rgb(0 0 0)', (string) $value->forMode('2024'));
+    }
+
+    public function testColorSpaceNotAStringThrows(): void
+    {
+        $this->expectException(TokenException::class);
+        $this->expectExceptionMessage('"colorSpace" must be a string, got int.');
+
+        $this->parser->parse([
+            'c' => [
+                '$type' => 'color',
+                '$value' => [
+                    'colorSpace' => 42,
+                    'channels' => [0, 0, 0],
+                ],
+            ],
+        ]);
+    }
+
+    public function testColorChannelsNotAnArrayThrows(): void
+    {
+        $this->expectException(TokenException::class);
+        $this->expectExceptionMessage('channels must be an array');
+
+        $this->parser->parse([
+            'c' => [
+                '$type' => 'color',
+                '$value' => [
+                    'colorSpace' => 'srgb',
+                    'channels' => 'abc',
+                ],
+            ],
+        ]);
+    }
+
+    public function testColorChannelEntryNotNumericThrows(): void
+    {
+        $this->expectException(TokenException::class);
+        $this->expectExceptionMessage('channel must be numeric or null, got string.');
+
+        $this->parser->parse([
+            'c' => [
+                '$type' => 'color',
+                '$value' => [
+                    'colorSpace' => 'srgb',
+                    'channels' => [1, 'x', 0],
+                ],
+            ],
+        ]);
+    }
+
+    public function testColorAlphaNotNumericThrows(): void
+    {
+        $this->expectException(TokenException::class);
+        $this->expectExceptionMessage('"alpha" must be numeric, got string.');
+
+        $this->parser->parse([
+            'c' => [
+                '$type' => 'color',
+                '$value' => [
+                    'colorSpace' => 'srgb',
+                    'channels' => [1, 0, 0],
+                    'alpha' => 'half',
+                ],
+            ],
+        ]);
+    }
+
+    public function testDimensionNonNumericValueThrows(): void
+    {
+        // Silently coercing "abc" to 0px would corrupt every consumer.
+        $this->expectException(TokenException::class);
+        $this->expectExceptionMessage('"value" must be numeric, got string.');
+
+        $this->parser->parse([
+            'space' => [
+                '$type' => 'dimension',
+                '$value' => [
+                    'value' => 'abc',
+                    'unit' => 'px',
+                ],
+            ],
+        ]);
+    }
+
+    public function testDurationNonNumericValueThrows(): void
+    {
+        $this->expectException(TokenException::class);
+        $this->expectExceptionMessage('"value" must be numeric, got string.');
+
+        $this->parser->parse([
+            'fast' => [
+                '$type' => 'duration',
+                '$value' => [
+                    'value' => 'abc',
+                    'unit' => 'ms',
+                ],
+            ],
+        ]);
+    }
+
+    public function testTypographyLineHeightKeywordThrows(): void
+    {
+        // CSS's "normal" keyword is not a DTCG lineHeight; coercing it to 0
+        // would collapse every line box.
+        $this->expectException(TokenException::class);
+        $this->expectExceptionMessage('lineHeight must be numeric, got string.');
+
+        $this->parser->parse([
+            'body' => [
+                '$type' => 'typography',
+                '$value' => [
+                    'fontFamily' => 'Inter',
+                    'fontSize' => [
+                        'value' => 16,
+                        'unit' => 'px',
+                    ],
+                    'fontWeight' => 400,
+                    'lineHeight' => 'normal',
+                ],
+            ],
+        ]);
+    }
+
+    public function testBooleanStringValueThrows(): void
+    {
+        // (bool) "false" is true in PHP — exactly the coercion to refuse.
+        $this->expectException(TokenException::class);
+        $this->expectExceptionMessage('boolean token expects a bool value, got string.');
+
+        $this->parser->parse([
+            'flag' => [
+                '$type' => 'boolean',
+                '$value' => 'false',
+            ],
+        ]);
+    }
+
+    public function testParseExceptionsIdentifyTheFailingToken(): void
+    {
+        // On a 2000-token file, a type-scoped message without the token path
+        // is close to useless.
+        $this->expectException(TokenException::class);
+        $this->expectExceptionMessage('Token "space.bad": Dimension token value has invalid unit "pt"');
+
+        $this->parser->parse([
+            'space' => [
+                '$type' => 'dimension',
+                'ok' => [
+                    '$value' => [
+                        'value' => 16,
+                        'unit' => 'px',
+                    ],
+                ],
+                'bad' => [
+                    '$value' => [
+                        'value' => 12,
+                        'unit' => 'pt',
+                    ],
+                ],
+            ],
+        ]);
+    }
+
+    public function testHugeAuthoredTypeProducesBoundedExceptionMessage(): void
+    {
+        // Exception messages echo token content: a multi-megabyte $type must
+        // not become a multi-megabyte log line.
+        try {
+            $this->parser->parse([
+                'x' => [
+                    '$type' => str_repeat('a', 100_000),
+                    '$value' => 'v',
+                ],
+            ]);
+            self::fail('Expected a TokenException.');
+        } catch (TokenException $exception) {
+            self::assertLessThan(300, \strlen($exception->getMessage()));
+        }
+    }
+
+    public function testLegacyBareDimensionRejectsInfinity(): void
+    {
+        // The legacy bare-number path must apply the same finiteness guard
+        // as the {value, unit} object path — "1e999" must not render "infpx".
+        $this->expectException(TokenException::class);
+        $this->expectExceptionMessage('must be a finite number');
+
+        $this->parser->parse([
+            'space' => [
+                '$type' => 'dimension',
+                '$value' => '1e999',
+            ],
+        ]);
+    }
+
+    public function testStrokeStyleBareDashArrayEntryRejectsInfinity(): void
+    {
+        $this->expectException(TokenException::class);
+        $this->expectExceptionMessage('must be a finite number');
+
+        $this->parser->parse([
+            's' => [
+                '$type' => 'strokeStyle',
+                '$value' => [
+                    'dashArray' => ['1e999', 4],
+                ],
+            ],
+        ]);
+    }
+
+    public function testShadowDimensionRejectsInfinity(): void
+    {
+        $this->expectException(TokenException::class);
+        $this->expectExceptionMessage('must be a finite number');
+
+        $this->parser->parse([
+            'sh' => [
+                '$type' => 'shadow',
+                '$value' => [
+                    'offsetX' => [
+                        'value' => '1e999',
+                        'unit' => 'px',
+                    ],
+                    'offsetY' => [
+                        'value' => 2,
+                        'unit' => 'px',
+                    ],
+                    'color' => '#000000',
+                ],
+            ],
+        ]);
+    }
+
+    public function testEmptyGradientThrows(): void
+    {
+        // "linear-gradient()" is invalid CSS; refuse at parse time.
+        $this->expectException(TokenException::class);
+        $this->expectExceptionMessage('at least one color stop');
+
+        $this->parser->parse([
+            'g' => [
+                '$type' => 'gradient',
+                '$value' => [],
+            ],
+        ]);
+    }
+
+    public function testEmptyFontFamilyListThrows(): void
+    {
+        $this->expectException(TokenException::class);
+        $this->expectExceptionMessage('at least one family');
+
+        $this->parser->parse([
+            'sans' => [
+                '$type' => 'fontFamily',
+                '$value' => [],
+            ],
+        ]);
+    }
+
+    public function testEmptyFontFamilyStringThrows(): void
+    {
+        $this->expectException(TokenException::class);
+        $this->expectExceptionMessage('must not be empty');
+
+        $this->parser->parse([
+            'sans' => [
+                '$type' => 'fontFamily',
+                '$value' => '',
+            ],
+        ]);
+    }
+
+    public function testEmptyShadowThrows(): void
+    {
+        $this->expectException(TokenException::class);
+        $this->expectExceptionMessage('at least one layer');
+
+        $this->parser->parse([
+            'sh' => [
+                '$type' => 'shadow',
+                '$value' => [],
+            ],
+        ]);
+    }
+
+    public function testBrokenAliasDeepInChainNamesTheImmediateToken(): void
+    {
+        // The diagnostic must point at the token holding the broken alias
+        // ("b"), not at the root of the resolution walk ("a").
+        $this->expectException(TokenException::class);
+        $this->expectExceptionMessage('Alias "{missing}" in token "b"');
+
+        $this->parser->parse([
+            'a' => [
+                '$type' => 'color',
+                '$value' => '{b}',
+            ],
+            'b' => [
+                '$type' => 'color',
+                '$value' => '{missing}',
+            ],
+        ]);
+    }
+
+    public function testNumberRejectsInfinity(): void
+    {
+        // is_numeric("1e999") is true and casts to INF, which would render as
+        // "inf" in CSS output.
+        $this->expectException(TokenException::class);
+        $this->expectExceptionMessage('must be a finite number');
+
+        $this->parser->parse([
+            'n' => [
+                '$type' => 'number',
+                '$value' => '1e999',
+            ],
+        ]);
+    }
+
+    public function testDimensionRejectsInfiniteValue(): void
+    {
+        $this->expectException(TokenException::class);
+        $this->expectExceptionMessage('must be a finite number');
+
+        $this->parser->parse([
+            'space' => [
+                '$type' => 'dimension',
+                '$value' => [
+                    'value' => \INF,
+                    'unit' => 'px',
+                ],
+            ],
+        ]);
+    }
+
+    public function testCubicBezierRejectsInfiniteY(): void
+    {
+        // y coordinates are unbounded in [0,1]-x terms but must stay finite.
+        $this->expectException(TokenException::class);
+        $this->expectExceptionMessage('must be a finite number');
+
+        $this->parser->parse([
+            'ease' => [
+                '$type' => 'cubicBezier',
+                '$value' => [0.4, \INF, 0.2, 1.0],
+            ],
+        ]);
+    }
+
+    public function testColorChannelRejectsInfinity(): void
+    {
+        $this->expectException(TokenException::class);
+        $this->expectExceptionMessage('must be a finite number');
+
+        $this->parser->parse([
+            'c' => [
+                '$type' => 'color',
+                '$value' => [
+                    'colorSpace' => 'srgb',
+                    'channels' => [\INF, 0, 0],
+                ],
+            ],
+        ]);
+    }
+
+    public function testDuplicatePathFromFlatAndNestedKeysThrows(): void
+    {
+        // A flat "a.b" key and a nested a > b group collapse to the same path;
+        // silently keeping the later one would drop a token without a trace.
+        $this->expectException(TokenException::class);
+        $this->expectExceptionMessage('Duplicate token path "a.b"');
+
+        $this->parser->parse([
+            'a.b' => [
+                '$type' => 'color',
+                '$value' => '#ff0000',
+            ],
+            'a' => [
+                '$type' => 'color',
+                'b' => [
+                    '$value' => '#00ff00',
+                ],
+            ],
+        ]);
+    }
+
+    public function testValueWithTrailingNewlineIsNotAnAlias(): void
+    {
+        // "{s.base}\n" is not an alias — without the D modifier, $ would match
+        // before the trailing newline and resolve it silently.
+        $result = $this->parser->parse([
+            's' => [
+                '$type' => 'string',
+                'base' => [
+                    '$value' => 'plain',
+                ],
+                'weird' => [
+                    '$value' => "{s.base}\n",
+                ],
+            ],
+        ]);
+
+        self::assertSame("{s.base}\n", (string) $result->values['s.weird']);
+    }
+
+    public function testDeepFanOutAliasGraphResolvesWithoutExponentialBlowup(): void
+    {
+        // Each level references the previous token from 3 slots; without
+        // memoization resolution re-walks the shared subtree per reference
+        // (3^depth) and a ~2 KB document exhausts the memory limit.
+        $depth = 16;
+
+        $raw = [
+            't' => [
+                '$type' => 'typography',
+                'step0' => [
+                    '$value' => $this->typographyValue(),
+                ],
+            ],
+        ];
+
+        for ($i = 1; $i <= $depth; $i++) {
+            $alias = \sprintf('{t.step%d}', $i - 1);
+            $raw['t']['step' . $i] = [
+                '$value' => [
+                    ...$this->typographyValue(),
+                    'x1' => $alias,
+                    'x2' => $alias,
+                    'x3' => $alias,
+                ],
+            ];
+        }
+
+        $result = $this->parser->parse($raw);
+
+        self::assertCount($depth + 1, $result->values);
+
+        $last = $result->values['t.step' . $depth];
+        self::assertInstanceOf(TypographyValue::class, $last);
+        // The aliases resolved to step(N-1)'s raw composite value.
+        self::assertIsArray($last->extras()['x1']);
+    }
+
+    public function testEffectiveModesUnionAcrossMultipleAliasTargets(): void
+    {
+        // A composite aliasing two differently-themed tokens hoists the UNION
+        // of their modes; a mode declared by both is deduplicated.
+        $result = $this->parser->parse([
+            'a' => [
+                '$type' => 'color',
+                '$value' => '#ff0000',
+                '$extensions' => [
+                    'mode' => [
+                        'm1' => '#110000',
+                        'shared' => '#220000',
+                    ],
+                ],
+            ],
+            'b' => [
+                '$type' => 'color',
+                '$value' => '#00ff00',
+                '$extensions' => [
+                    'mode' => [
+                        'm2' => '#001100',
+                        'shared' => '#002200',
+                    ],
+                ],
+            ],
+            't' => [
+                '$type' => 'typography',
+                '$value' => [
+                    ...$this->typographyValue(),
+                    'x1' => '{a}',
+                    'x2' => '{b}',
+                ],
+            ],
+        ]);
+
+        $t = $result->values['t'];
+        self::assertInstanceOf(TypographyValue::class, $t);
+
+        // m1 comes from `a` only: x1 swaps, x2 falls back to b's base.
+        self::assertSame('#110000', $t->forMode('m1')->extras()['x1']);
+        self::assertSame('#00ff00', $t->forMode('m1')->extras()['x2']);
+        // m2 comes from `b` only.
+        self::assertSame('#001100', $t->forMode('m2')->extras()['x2']);
+        // `shared` is declared by both targets and hoisted once.
+        self::assertSame('#220000', $t->forMode('shared')->extras()['x1']);
+        self::assertSame('#002200', $t->forMode('shared')->extras()['x2']);
+    }
+
+    /**
+     * Minimal valid typography $value.
+     *
+     * @return array<string, mixed>
+     */
+    private function typographyValue(): array
+    {
+        return [
+            'fontFamily' => 'Inter',
+            'fontSize' => [
+                'value' => 16,
+                'unit' => 'px',
+            ],
+            'fontWeight' => 400,
+        ];
     }
 }

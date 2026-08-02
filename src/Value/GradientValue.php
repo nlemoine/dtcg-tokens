@@ -30,6 +30,19 @@ final readonly class GradientValue implements TokenValueInterface
         return \sprintf('linear-gradient(%s)', implode(', ', $parts));
     }
 
+    public function toCss(): string
+    {
+        return $this->__toString();
+    }
+
+    /**
+     * @return list<array{color: ColorValue, position: float}>
+     */
+    public function stops(): array
+    {
+        return $this->stops;
+    }
+
     public function forMode(string $mode): static
     {
         return $this->modes[$mode] ?? $this;

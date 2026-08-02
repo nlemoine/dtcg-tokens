@@ -6,6 +6,12 @@ namespace n5s\DtcgTokens\Value;
 
 use n5s\DtcgTokens\Internal\Number;
 
+/**
+ * A value with a CSS unit. Carries both DTCG `dimension` tokens (px/rem/em)
+ * and `duration` tokens (ms/s): their serialization and value/unit surface
+ * are identical, so they share one class — the parser's unit whitelist is
+ * what tells the two token types apart.
+ */
 final readonly class DimensionValue implements TokenValueInterface
 {
     /**
@@ -24,6 +30,11 @@ final readonly class DimensionValue implements TokenValueInterface
     {
         // Render integers without decimal point: 9999px not 9999.0px
         return Number::format($this->value) . $this->unit;
+    }
+
+    public function toCss(): string
+    {
+        return $this->__toString();
     }
 
     public function value(): float

@@ -23,13 +23,35 @@ final readonly class FontFamilyValue implements TokenValueInterface
         return implode(', ', array_map($this->quoteIfNeeded(...), $this->families));
     }
 
+    public function toCss(): string
+    {
+        return $this->__toString();
+    }
+
+    /**
+     * @return list<string>
+     */
+    public function families(): array
+    {
+        return $this->families;
+    }
+
     public function forMode(string $mode): static
     {
         return $this->modes[$mode] ?? $this;
     }
 
+    /**
+     * Bare CSS-ident words (generic keywords, single-word families like
+     * `-apple-system`) pass through; anything else becomes a CSS string
+     * with backslashes and double quotes escaped.
+     */
     private function quoteIfNeeded(string $family): string
     {
-        return str_contains($family, ' ') ? '"' . $family . '"' : $family;
+        if (preg_match('/^-?[a-zA-Z][a-zA-Z0-9-]*$/D', $family) === 1) {
+            return $family;
+        }
+
+        return '"' . str_replace(['\\', '"'], ['\\\\', '\\"'], $family) . '"';
     }
 }

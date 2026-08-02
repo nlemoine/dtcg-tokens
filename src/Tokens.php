@@ -6,6 +6,7 @@ namespace n5s\DtcgTokens;
 
 use n5s\DtcgTokens\Exception\TokenException;
 use n5s\DtcgTokens\Loader\JsonFileLoader;
+use n5s\DtcgTokens\Loader\TokenLoaderInterface;
 use n5s\DtcgTokens\Parser\TokenMetadata;
 use n5s\DtcgTokens\Parser\TokenParser;
 use n5s\DtcgTokens\Value\TokenValueInterface;
@@ -45,7 +46,16 @@ final readonly class Tokens implements \IteratorAggregate, \Countable
      */
     public static function fromFiles(array $paths, ?TokenParser $parser = null): self
     {
-        return self::fromArray(JsonFileLoader::fromPaths($paths)->load(), $parser);
+        return self::fromLoader(JsonFileLoader::fromPaths($paths), $parser);
+    }
+
+    /**
+     * Build from any loader — the seam for custom sources (HTTP, database,
+     * ...) that {@see self::fromFiles()} is a file-based shorthand for.
+     */
+    public static function fromLoader(TokenLoaderInterface $loader, ?TokenParser $parser = null): self
+    {
+        return self::fromArray($loader->load(), $parser);
     }
 
     public function get(string $path, ?string $mode = null): TokenValueInterface
@@ -58,6 +68,42 @@ final readonly class Tokens implements \IteratorAggregate, \Countable
     public function has(string $path): bool
     {
         return isset($this->values[$path]);
+    }
+
+    /**
+     * Every mode name declared by at least one token in the collection.
+     *
+     * @return list<string>
+     */
+    public function modes(): array
+    {
+        /** @var array<string, true> $modes */
+        $modes = [];
+        foreach ($this->metadata as $metadata) {
+            foreach ($metadata->modes as $mode) {
+                $modes[$mode] = true;
+            }
+        }
+
+        // strval: PHP canonicalizes numeric mode names ("2024") to int keys.
+        return array_map(strval(...), array_keys($modes));
+    }
+
+    /**
+     * A collection with every token bound to $mode — tokens that do not
+     * declare it keep their base value. Metadata (including declared mode
+     * lists) is carried over. The building block for themed output:
+     *
+     *     $exporter->export($tokens->forMode('dark'));
+     */
+    public function forMode(string $mode): self
+    {
+        $values = [];
+        foreach ($this->values as $path => $value) {
+            $values[$path] = $value->forMode($mode);
+        }
+
+        return new self($values, $this->metadata);
     }
 
     /**
@@ -82,10 +128,12 @@ final readonly class Tokens implements \IteratorAggregate, \Countable
     }
 
     /**
-     * @return \ArrayIterator<string, TokenValueInterface>
+     * @return \Traversable<string, TokenValueInterface>
      */
-    public function getIterator(): \ArrayIterator
+    public function getIterator(): \Traversable
     {
+        // \Traversable, not \ArrayIterator: the concrete SPL class is an
+        // implementation detail, not part of the published contract.
         return new \ArrayIterator($this->values);
     }
 

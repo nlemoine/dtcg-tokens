@@ -24,6 +24,26 @@ final readonly class BorderValue implements TokenValueInterface
         return \sprintf('%s %s %s', (string) $this->width, (string) $this->style, (string) $this->color);
     }
 
+    public function toCss(): string
+    {
+        return $this->__toString();
+    }
+
+    public function color(): ColorValue
+    {
+        return $this->color;
+    }
+
+    public function width(): DimensionValue
+    {
+        return $this->width;
+    }
+
+    public function style(): StrokeStyleValue
+    {
+        return $this->style;
+    }
+
     public function forMode(string $mode): static
     {
         return $this->modes[$mode] ?? $this;
