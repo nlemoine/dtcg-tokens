@@ -24,8 +24,10 @@ use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
 
 #[CoversClass(TokenParser::class)]
+#[CoversClass(\n5s\DtcgTokens\Parser\AliasResolver::class)]
 #[CoversClass(\n5s\DtcgTokens\Parser\ParseResult::class)]
 #[CoversClass(\n5s\DtcgTokens\Parser\TokenMetadata::class)]
+#[CoversClass(\n5s\DtcgTokens\Exception\TokenException::class)]
 final class TokenParserTest extends TestCase
 {
     private TokenParser $parser;
@@ -1619,6 +1621,170 @@ final class TokenParserTest extends TestCase
         }
     }
 
+    public function testNumericTopLevelTokenKeyIsSupported(): void
+    {
+        // PHP canonicalizes "4" to int 4 as an array key; a root-level
+        // spacing scale must not crash with a TypeError.
+        $result = $this->parser->parse([
+            '4' => [
+                '$type' => 'dimension',
+                '$value' => [
+                    'value' => 4,
+                    'unit' => 'px',
+                ],
+            ],
+        ]);
+
+        self::assertArrayHasKey('4', $result->values);
+        self::assertSame('4px', (string) $result->values['4']);
+        self::assertArrayHasKey('4', $result->metadata);
+    }
+
+    public function testNumericTopLevelGroupKeyIsSupported(): void
+    {
+        $result = $this->parser->parse([
+            '2024' => [
+                '$type' => 'color',
+                'brand' => [
+                    '$value' => '#ff0000',
+                ],
+            ],
+        ]);
+
+        self::assertArrayHasKey('2024.brand', $result->values);
+    }
+
+    public function testOverlongAliasChainThrowsInsteadOfExhaustingMemory(): void
+    {
+        // Alias chains link laterally across the flat entry map, so
+        // json_decode's depth cap does not bound them: a ~75 KB document
+        // used to die with an uncatchable OOM fatal.
+        $raw = [
+            'c' => [
+                '$type' => 'color',
+            ],
+        ];
+        // Head-first ordering: the very first token forces the full descent.
+        for ($i = 2500; $i >= 1; $i--) {
+            $raw['c']['s' . $i] = [
+                '$value' => \sprintf('{c.s%d}', $i - 1),
+            ];
+        }
+
+        $raw['c']['s0'] = [
+            '$value' => '#ff0000',
+        ];
+
+        $this->expectException(TokenException::class);
+        $this->expectExceptionMessage('Alias chain is too deep');
+
+        $this->parser->parse($raw);
+    }
+
+    public function testChainAtTheDepthLimitStillResolves(): void
+    {
+        // Exactly at the limit: 99 aliases plus the literal is 100 hops.
+        $result = $this->parser->parse($this->aliasChain(99));
+
+        self::assertSame('rgb(255 0 0)', (string) $result->values['c.s99']);
+    }
+
+    public function testChainOneHopPastTheLimitThrows(): void
+    {
+        $this->expectException(TokenException::class);
+        $this->expectExceptionMessage('Alias chain is too deep');
+
+        $this->parser->parse($this->aliasChain(100));
+    }
+
+    public function testModeResolutionIsMemoizedPerMode(): void
+    {
+        // Same fan-out shape as the base-value test, but resolved in a mode:
+        // without a per-mode memo this degenerates to O(3^depth) too.
+        $depth = 16;
+        $raw = [
+            'seed' => [
+                '$type' => 'color',
+                '$value' => '#ff0000',
+                '$extensions' => [
+                    'mode' => [
+                        'dark' => '#0000ff',
+                    ],
+                ],
+            ],
+            't' => [
+                '$type' => 'typography',
+                'step0' => [
+                    '$value' => [
+                        ...$this->typographyValue(),
+                        'x' => '{seed}',
+                    ],
+                ],
+            ],
+        ];
+
+        for ($i = 1; $i <= $depth; $i++) {
+            $alias = \sprintf('{t.step%d}', $i - 1);
+            $raw['t']['step' . $i] = [
+                '$value' => [
+                    ...$this->typographyValue(),
+                    'x1' => $alias,
+                    'x2' => $alias,
+                    'x3' => $alias,
+                ],
+            ];
+        }
+
+        $result = $this->parser->parse($raw);
+
+        $last = $result->values['t.step' . $depth];
+        self::assertInstanceOf(TypographyValue::class, $last);
+        // The mode is hoisted through the whole chain: the nested alias
+        // resolves to the seed's dark value, not its base one.
+        $base = $last->extras()['x1'];
+        $dark = $last->forMode('dark')->extras()['x1'];
+        self::assertIsArray($base);
+        self::assertIsArray($dark);
+        self::assertNotSame($base, $dark);
+    }
+
+    public function testNonArrayDashArrayThrows(): void
+    {
+        // Silently dropping it renders a dashed token as "solid".
+        $this->expectException(TokenException::class);
+        $this->expectExceptionMessage('dashArray must be an array');
+
+        $this->parser->parse([
+            's' => [
+                '$type' => 'strokeStyle',
+                '$value' => [
+                    'dashArray' => 'not-an-array',
+                ],
+            ],
+        ]);
+    }
+
+    public function testInvalidDashArrayEntryThrows(): void
+    {
+        $this->expectException(TokenException::class);
+        $this->expectExceptionMessage('dashArray entry must be');
+
+        $this->parser->parse([
+            's' => [
+                '$type' => 'strokeStyle',
+                '$value' => [
+                    'dashArray' => [
+                        [
+                            'value' => 1,
+                            'unit' => 'px',
+                        ],
+                        'junk',
+                    ],
+                ],
+            ],
+        ]);
+    }
+
     public function testLegacyBareDimensionRejectsInfinity(): void
     {
         // The legacy bare-number path must apply the same finiteness guard
@@ -1929,6 +2095,33 @@ final class TokenParserTest extends TestCase
         // `shared` is declared by both targets and hoisted once.
         self::assertSame('#220000', $t->forMode('shared')->extras()['x1']);
         self::assertSame('#002200', $t->forMode('shared')->extras()['x2']);
+    }
+
+    /**
+     * A chain of $length aliases ending on a literal color, declared
+     * head-first so the very first token parsed forces the full descent
+     * (tail-first ordering would let memoization keep every chain short).
+     *
+     * @return array<string, mixed>
+     */
+    private function aliasChain(int $length): array
+    {
+        $raw = [
+            'c' => [
+                '$type' => 'color',
+            ],
+        ];
+        for ($i = $length; $i >= 1; $i--) {
+            $raw['c']['s' . $i] = [
+                '$value' => \sprintf('{c.s%d}', $i - 1),
+            ];
+        }
+
+        $raw['c']['s0'] = [
+            '$value' => '#ff0000',
+        ];
+
+        return $raw;
     }
 
     /**

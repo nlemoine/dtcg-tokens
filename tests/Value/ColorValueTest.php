@@ -10,6 +10,7 @@ use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
 
 #[CoversClass(ColorValue::class)]
+#[CoversClass(\n5s\DtcgTokens\Internal\SrgbConverter::class)]
 final class ColorValueTest extends TestCase
 {
     public function testSixDigitHexToHex(): void

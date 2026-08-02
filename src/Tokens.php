@@ -103,7 +103,15 @@ final readonly class Tokens implements \IteratorAggregate, \Countable
             $values[$path] = $value->forMode($mode);
         }
 
-        return new self($values, $this->metadata);
+        // Mode-bound values carry no sibling map, so the projection can no
+        // longer serve any mode: clearing the lists keeps modes() honest and
+        // stops a second forMode() from looking like it worked.
+        $metadata = [];
+        foreach ($this->metadata as $path => $entry) {
+            $metadata[$path] = new TokenMetadata($entry->description, $entry->deprecated);
+        }
+
+        return new self($values, $metadata);
     }
 
     /**

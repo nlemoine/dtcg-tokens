@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace n5s\DtcgTokens\Tests;
 
 use n5s\DtcgTokens\Exception\TokenException;
+use n5s\DtcgTokens\Export\CssExporter;
 use n5s\DtcgTokens\Loader\TokenLoaderInterface;
 use n5s\DtcgTokens\Tokens;
 use n5s\DtcgTokens\Value\ColorValue;
@@ -115,6 +116,27 @@ final class TokensTest extends TestCase
         self::assertCount(3, $tokens);
     }
 
+    public function testNumericTokenPathIsUsableEndToEnd(): void
+    {
+        // PHP canonicalizes "4" to an int array key, so every reader of a
+        // path has to cope: lookup, iteration and CSS export.
+        $tokens = Tokens::fromArray([
+            '4' => [
+                '$type' => 'dimension',
+                '$value' => [
+                    'value' => 4,
+                    'unit' => 'px',
+                ],
+            ],
+        ]);
+
+        self::assertTrue($tokens->has('4'));
+        self::assertSame('4px', (string) $tokens->get('4'));
+
+        $css = new CssExporter()->export($tokens);
+        self::assertStringContainsString('--4: 4px;', $css);
+    }
+
     public function testModesEnumeratesTheUnionOfDeclaredModes(): void
     {
         $tokens = Tokens::fromArray([
@@ -181,8 +203,39 @@ final class TokensTest extends TestCase
         self::assertSame('rgb(255 0 0)', (string) $dark->get('color.accent'));
         // The original collection is untouched (immutability).
         self::assertSame('rgb(255 255 255)', (string) $tokens->get('color.fg'));
-        // Metadata is carried over.
-        self::assertSame(['dark'], $dark->metadata('color.fg')?->modes);
+        // Descriptive metadata is carried over...
+        self::assertNotNull($dark->metadata('color.fg'));
+    }
+
+    public function testProjectedCollectionNoLongerAdvertisesModes(): void
+    {
+        // Mode-bound values carry no sibling map, so a projection cannot
+        // serve any mode: it must stop claiming it can, or the natural loop
+        // `foreach ($tokens->modes() as $m) ... $tokens->forMode($m)` looks
+        // like it works while emitting the same theme every time.
+        $tokens = Tokens::fromArray([
+            'color' => [
+                '$type' => 'color',
+                'fg' => [
+                    '$value' => '#ffffff',
+                    '$extensions' => [
+                        'mode' => [
+                            'dark' => '#000000',
+                            'hc' => '#0000ff',
+                        ],
+                    ],
+                ],
+            ],
+        ]);
+
+        $dark = $tokens->forMode('dark');
+
+        self::assertSame([], $dark->modes());
+        self::assertSame([], $dark->metadata('color.fg')?->modes);
+        // ...and a second projection cannot silently return dark values.
+        self::assertSame('rgb(0 0 0)', (string) $dark->forMode('hc')->get('color.fg'));
+        // The source collection still resolves every mode correctly.
+        self::assertSame('rgb(0 0 255)', (string) $tokens->forMode('hc')->get('color.fg'));
     }
 
     public function testMetadataCarriesDeclaredModes(): void

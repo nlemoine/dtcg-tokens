@@ -5,31 +5,78 @@ declare(strict_types=1);
 namespace n5s\DtcgTokens\Tests\Value;
 
 use n5s\DtcgTokens\Tokens;
+use n5s\DtcgTokens\Value\BooleanValue;
 use n5s\DtcgTokens\Value\BorderValue;
 use n5s\DtcgTokens\Value\ColorValue;
 use n5s\DtcgTokens\Value\CubicBezierValue;
+use n5s\DtcgTokens\Value\DimensionValue;
 use n5s\DtcgTokens\Value\FontFamilyValue;
 use n5s\DtcgTokens\Value\GradientValue;
+use n5s\DtcgTokens\Value\LinkValue;
+use n5s\DtcgTokens\Value\NumberValue;
 use n5s\DtcgTokens\Value\ShadowValue;
+use n5s\DtcgTokens\Value\StringValue;
 use n5s\DtcgTokens\Value\StrokeStyleValue;
 use n5s\DtcgTokens\Value\TransitionValue;
-use PHPUnit\Framework\Attributes\CoversNothing;
+use n5s\DtcgTokens\Value\TypographyValue;
+use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
 
 /**
  * Cross-cutting contract of the value-object surface: toCss() on every type,
  * and component accessors on the composites.
  */
-#[CoversNothing]
+#[CoversClass(BooleanValue::class)]
+#[CoversClass(BorderValue::class)]
+#[CoversClass(ColorValue::class)]
+#[CoversClass(CubicBezierValue::class)]
+#[CoversClass(DimensionValue::class)]
+#[CoversClass(FontFamilyValue::class)]
+#[CoversClass(GradientValue::class)]
+#[CoversClass(LinkValue::class)]
+#[CoversClass(NumberValue::class)]
+#[CoversClass(ShadowValue::class)]
+#[CoversClass(StringValue::class)]
+#[CoversClass(StrokeStyleValue::class)]
+#[CoversClass(TransitionValue::class)]
+#[CoversClass(TypographyValue::class)]
 final class ValueObjectSurfaceTest extends TestCase
 {
-    public function testToCssMatchesStringCastForEveryTokenType(): void
+    /**
+     * The exact CSS every token type renders. Asserting `toCss()` against
+     * `(string)` would be a tautology — 13 of the 14 classes implement one
+     * as a call to the other.
+     *
+     * @return array<string, string>
+     */
+    private const array EXPECTED_CSS = [
+        'color' => 'rgb(255 0 0)',
+        'dimension' => '1px',
+        'duration' => '200ms',
+        'number' => '0.5',
+        'fontFamily' => 'Inter, "Helvetica Neue"',
+        'fontWeight' => '700',
+        'cubicBezier' => 'cubic-bezier(0.25, 0.1, 0.25, 1)',
+        'boolean' => 'true',
+        'string' => 'hello',
+        'link' => 'https://example.com/x.svg',
+        'strokeStyle' => 'dashed',
+        'border' => '1px solid rgb(0 0 0)',
+        'shadow' => '1px 2px 0px 0px rgb(0 0 0)',
+        'gradient' => 'linear-gradient(rgb(255 0 0) 0%, rgb(0 0 255) 100%)',
+        'transition' => '200ms 0ms cubic-bezier(0.25, 0.1, 0.25, 1)',
+        'typography' => '400 16px Inter',
+    ];
+
+    public function testEveryTokenTypeRendersItsExpectedCss(): void
     {
         $tokens = Tokens::fromArray($this->oneTokenOfEachType());
 
         self::assertCount(16, $tokens);
-        foreach ($tokens as $path => $value) {
-            self::assertSame((string) $value, $value->toCss(), \sprintf('toCss() of "%s"', $path));
+        foreach (self::EXPECTED_CSS as $path => $expected) {
+            $value = $tokens->get($path);
+            self::assertSame($expected, $value->toCss(), \sprintf('toCss() of "%s"', $path));
+            self::assertSame($expected, (string) $value, \sprintf('(string) of "%s"', $path));
         }
     }
 

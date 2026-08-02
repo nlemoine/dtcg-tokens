@@ -15,9 +15,11 @@ use n5s\DtcgTokens\Value\TokenValueInterface;
  * The value's CSS form is produced by casting the value object to string.
  *
  * Names and values are emitted verbatim, so anything that could break out of
- * its declaration (`;`, `{`, `}`, a comment opener, or non-ident name
- * characters) is rejected with a TokenException rather than escaped —
- * silent mangling would create colliding names and altered values.
+ * its declaration — or out of the surrounding `<style>` element — is
+ * rejected with a TokenException rather than escaped: silent mangling would
+ * create colliding names and altered values. That covers non-ident name
+ * characters, `;`, `{`, `}`, `<`, `>`, comment openers, control characters,
+ * unbalanced brackets, unterminated strings and trailing escapes.
  */
 final readonly class CssExporter
 {
@@ -39,6 +41,8 @@ final readonly class CssExporter
         /** @var array<string, string> $seen Custom property name => token path */
         $seen = [];
         foreach ($tokens as $path => $value) {
+            // PHP canonicalizes a numeric path ("4") to an int array key.
+            $path = (string) $path;
             $name = $this->varName($path);
             if (isset($seen[$name])) {
                 throw TokenException::invalidValue(\sprintf(
@@ -81,19 +85,93 @@ final readonly class CssExporter
     }
 
     /**
-     * Custom properties accept nearly any token stream, so the value is
-     * emitted verbatim — which is exactly why declaration terminators and
-     * comment openers must be refused.
+     * Custom properties accept nearly any token stream and the value is
+     * emitted verbatim, so anything able to escape its declaration — or the
+     * surrounding <style> element — is refused.
+     *
+     * A denylist alone is not enough: an unterminated string or function
+     * token swallows everything up to the next quote/paren or EOF, so the
+     * value is scanned for balance and termination too.
      */
     private function cssValue(string $path, string $css): string
     {
-        if (preg_match('#[;{}]|/\*#', $css) === 1) {
-            throw TokenException::invalidValue(\sprintf(
-                'Token "%s" value cannot be exported: it contains characters that would break out of a CSS declaration (";", "{", "}" or "/*").',
-                $path,
-            ));
+        // ; { }  end or nest a declaration.
+        // < >    escape the <style> element: it is HTML raw text, scanned for
+        //        "</style" with no CSS awareness, so no CSS guard applies.
+        // /*     opens a comment.
+        // C0/DEL control characters, including the newlines that terminate a
+        //        CSS string.
+        if (preg_match('#[;{}<>]|/\*|[\x00-\x1F\x7F]#', $css) === 1) {
+            throw $this->cannotExport($path, 'it contains characters that would break out of a CSS declaration (";", "{", "}", "<", ">", "/*" or a control character)');
         }
 
+        $this->assertBalancedAndTerminated($path, $css);
+
         return $css;
+    }
+
+    /**
+     * Reject values whose brackets are unbalanced, whose strings are left
+     * open, or which end mid-escape — each of those swallows the emitted
+     * terminator and the declarations that follow.
+     */
+    private function assertBalancedAndTerminated(string $path, string $css): void
+    {
+        /** @var list<string> $stack Expected closing brackets, innermost last */
+        $stack = [];
+        $quote = null;
+        $length = \strlen($css);
+
+        for ($i = 0; $i < $length; $i++) {
+            $char = $css[$i];
+
+            if ($char === '\\') {
+                // A trailing backslash escapes the terminator we append.
+                if ($i + 1 >= $length) {
+                    throw $this->cannotExport($path, 'it ends with an unterminated escape ("\\")');
+                }
+
+                $i++;
+
+                continue;
+            }
+
+            if ($quote !== null) {
+                if ($char === $quote) {
+                    $quote = null;
+                }
+
+                continue;
+            }
+
+            if ($char === '"' || $char === "'") {
+                $quote = $char;
+
+                continue;
+            }
+
+            if ($char === '(' || $char === '[') {
+                $stack[] = $char === '(' ? ')' : ']';
+
+                continue;
+            }
+
+            if (($char === ')' || $char === ']') && array_pop($stack) !== $char) {
+                throw $this->cannotExport($path, 'its brackets are unbalanced');
+            }
+        }
+
+        if ($quote !== null) {
+            throw $this->cannotExport($path, \sprintf('it contains an unterminated string (%s)', $quote));
+        }
+
+        if ($stack !== []) {
+            throw $this->cannotExport($path, 'its brackets are unbalanced');
+        }
+    }
+
+    private function cannotExport(string $path, string $reason): \n5s\DtcgTokens\Exception\TokenParseException
+    {
+        return TokenException::invalidValue(\sprintf('Token "%s" value cannot be exported: %s.', $path, $reason));
     }
 }

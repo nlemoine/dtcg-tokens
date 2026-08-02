@@ -29,9 +29,22 @@ final class AliasResolver
     private const string ALIAS_PATTERN = '/^\{(.+)}$/D';
 
     /**
-     * @var array<string, mixed> Completed resolutions, keyed by mode + path
+     * Alias chains link laterally across the flat entry map, so json_decode's
+     * nesting cap does not bound them. Each hop keeps a frame alive, so an
+     * unbounded chain dies as an uncatchable OOM fatal instead of a
+     * TokenException. Real design systems nest a handful of levels.
      */
-    private array $resolved = [];
+    private const int MAX_CHAIN_DEPTH = 100;
+
+    /**
+     * @var array<string, mixed> Completed base resolutions, keyed by path
+     */
+    private array $resolvedBase = [];
+
+    /**
+     * @var array<string, array<string, mixed>> Completed resolutions per mode, then path
+     */
+    private array $resolvedByMode = [];
 
     /**
      * @var array<string, list<string>> Completed mode sets per path
@@ -39,7 +52,7 @@ final class AliasResolver
     private array $modesMemo = [];
 
     /**
-     * @param array<string, RawEntry> $entries
+     * @param array<array-key, RawEntry> $entries
      */
     public function __construct(
         private readonly array $entries,
@@ -77,9 +90,18 @@ final class AliasResolver
             throw TokenException::circularAlias($path, array_keys($chain));
         }
 
-        $memoKey = ($mode ?? "\0") . "\x1F" . $path;
-        if (\array_key_exists($memoKey, $this->resolved)) {
-            return $this->resolved[$memoKey];
+        if (\count($chain) >= self::MAX_CHAIN_DEPTH) {
+            throw TokenException::aliasChainTooDeep($path, self::MAX_CHAIN_DEPTH);
+        }
+
+        // Separate memos per mode: one keyed map would need a separator that
+        // cannot occur in a mode name, and none is guaranteed.
+        if ($mode === null) {
+            if (\array_key_exists($path, $this->resolvedBase)) {
+                return $this->resolvedBase[$path];
+            }
+        } elseif (\array_key_exists($path, $this->resolvedByMode[$mode] ?? [])) {
+            return $this->resolvedByMode[$mode][$path];
         }
 
         $entry = $this->entries[$path];
@@ -91,7 +113,13 @@ final class AliasResolver
 
         // Memoize completed resolutions only: a cycle throws before this line,
         // so no partial result can ever be cached.
-        return $this->resolved[$memoKey] = $this->resolveValue($raw, $mode, $chain);
+        $resolved = $this->resolveValue($raw, $mode, $chain);
+
+        if ($mode === null) {
+            return $this->resolvedBase[$path] = $resolved;
+        }
+
+        return $this->resolvedByMode[$mode][$path] = $resolved;
     }
 
     /**

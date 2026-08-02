@@ -33,6 +33,11 @@ final class CachedTokenFactory
     private ?int $tokensMtime = null;
 
     /**
+     * Whether the last create() that reached the write path stored its result.
+     */
+    private ?bool $cacheWritten = null;
+
+    /**
      * @param ?int $ttl Lifetime in seconds for pool entries; null (default)
      *                  keeps entries until externally evicted. Set one when
      *                  the pool survives deploys (Redis, APCu) so a release
@@ -54,7 +59,10 @@ final class CachedTokenFactory
      */
     public function cacheKey(): string
     {
-        return self::CACHE_KEY_PREFIX . self::CACHE_VERSION . '.' . $this->loader->fingerprint();
+        // Hash the fingerprint: a loader is free to return a URL or a DSN,
+        // and PSR-6 reserves {}()/\@: in keys — an unhashed one would make
+        // every pool call throw, silently disabling the cache for good.
+        return self::CACHE_KEY_PREFIX . self::CACHE_VERSION . '.' . hash('xxh128', $this->loader->fingerprint());
     }
 
     public function create(): Tokens
@@ -80,11 +88,22 @@ final class CachedTokenFactory
         if ($this->cache !== null) {
             try {
                 $item = $this->cache->getItem($this->cacheKey());
+            } catch (\Throwable) {
+                // The pool is an optimization, not a dependency: an
+                // unreachable backend must not take token resolution down
+                // with it. Without an item there is nothing to write either.
+                $item = null;
+            }
+        }
+
+        if ($item !== null) {
+            try {
                 if ($item->isHit()) {
                     $cached = $item->get();
                     // A corrupted, truncated or foreign entry behaves as a
-                    // miss (and gets overwritten below) instead of surfacing
-                    // as an opaque TypeError far from this boundary.
+                    // miss instead of surfacing as an opaque TypeError far
+                    // from this boundary — and is overwritten below, so a
+                    // poisoned entry cannot survive.
                     if (
                         $this->isValidPayload($cached)
                         && (! $this->debug || ($maxMtime !== 0 && $cached['mtime'] === $maxMtime))
@@ -95,10 +114,8 @@ final class CachedTokenFactory
                     }
                 }
             } catch (\Throwable) {
-                // The pool is an optimization, not a dependency: an
-                // unreachable backend must not take token resolution down
-                // with it. Skip the write too — it just proved unreliable.
-                $item = null;
+                // Unserializing the payload failed; fall through to a fresh
+                // parse and overwrite the entry.
             }
         }
 
@@ -117,14 +134,31 @@ final class CachedTokenFactory
                     $item->expiresAfter($this->ttl);
                 }
 
-                $this->cache?->save($item);
+                // PSR-6 save() reports failure by returning false rather than
+                // throwing (an oversized payload, a full backend), so both
+                // outcomes are recorded: the parse already succeeded, and a
+                // failed write only costs the next request a re-parse.
+                $this->cacheWritten = $this->cache?->save($item) ?? false;
             } catch (\Throwable) {
-                // The parse already succeeded; a failed write only costs the
-                // next request a re-parse.
+                $this->cacheWritten = false;
             }
         }
 
         return $this->tokens;
+    }
+
+    /**
+     * Whether the parsed tokens were successfully stored: true on a
+     * successful write, false when the pool rejected or failed it, null when
+     * no write was attempted (no pool, or the result came from the cache).
+     *
+     * Pool failures are deliberately non-fatal, so this is the only way to
+     * notice a pool that never accepts a write — worth asserting in a smoke
+     * test or a health check.
+     */
+    public function cacheWritten(): ?bool
+    {
+        return $this->cacheWritten;
     }
 
     /**
@@ -139,13 +173,14 @@ final class CachedTokenFactory
             && \array_key_exists('mtime', $cached) && \is_int($cached['mtime'])
             && \array_key_exists('values', $cached) && \is_array($cached['values'])
             && \array_key_exists('metadata', $cached) && \is_array($cached['metadata'])
+            // Paths are array keys, so a numeric one ("4") arrives as an int.
             && array_all(
                 $cached['values'],
-                static fn (mixed $value, mixed $path): bool => \is_string($path) && $value instanceof TokenValueInterface,
+                static fn (mixed $value): bool => $value instanceof TokenValueInterface,
             )
             && array_all(
                 $cached['metadata'],
-                static fn (mixed $metadata, mixed $path): bool => \is_string($path) && $metadata instanceof TokenMetadata,
+                static fn (mixed $metadata): bool => $metadata instanceof TokenMetadata,
             );
     }
 }

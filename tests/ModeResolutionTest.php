@@ -13,6 +13,7 @@ use PHPUnit\Framework\TestCase;
  * $extensions.mode must be honored for every token type, not only color/shadow.
  */
 #[CoversClass(TokenParser::class)]
+#[CoversClass(\n5s\DtcgTokens\Parser\AliasResolver::class)]
 #[CoversClass(Tokens::class)]
 final class ModeResolutionTest extends TestCase
 {

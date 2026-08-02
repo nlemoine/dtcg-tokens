@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace n5s\DtcgTokens\Value;
 
 use n5s\DtcgTokens\Exception\TokenException;
+use n5s\DtcgTokens\Internal\Str;
 
 final readonly class StrokeStyleValue implements TokenValueInterface
 {
@@ -46,7 +47,7 @@ final readonly class StrokeStyleValue implements TokenValueInterface
         if (! \in_array($keyword, self::KEYWORDS, true)) {
             throw TokenException::invalidValue(\sprintf(
                 'Invalid strokeStyle keyword "%s"; expected one of %s.',
-                $keyword,
+                Str::excerpt($keyword),
                 implode(', ', self::KEYWORDS),
             ));
         }

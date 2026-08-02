@@ -386,6 +386,103 @@ final class CachedTokenFactoryTest extends TestCase
         self::assertSame('rgb(255 0 0)', (string) $tokens->get('color.primary'));
     }
 
+    public function testNumericTokenPathRoundTripsThroughTheCache(): void
+    {
+        // A numeric path arrives as an int array key: the payload validator
+        // must not reject the entry the factory just wrote, or every request
+        // re-parses and re-writes forever.
+        $pool = new ArrayAdapter();
+        $loader = new CountingLoader([
+            '4' => [
+                '$type' => 'dimension',
+                '$value' => [
+                    'value' => 4,
+                    'unit' => 'px',
+                ],
+            ],
+        ]);
+
+        new CachedTokenFactory($loader, $pool)->create();
+
+        $second = new CountingLoader($loader->raw);
+        $tokens = new CachedTokenFactory($second, $pool)->create();
+
+        self::assertSame('4px', (string) $tokens->get('4'));
+        self::assertSame(0, $second->loadCalls, 'the cached entry must be served, not re-parsed');
+    }
+
+    public function testFingerprintWithPsr6ReservedCharactersStillCaches(): void
+    {
+        // A custom loader may fingerprint with a URL or a DSN; PSR-6 reserves
+        // {}()/\@: in keys, so an unhashed fingerprint would make every pool
+        // call throw and silently disable caching for good.
+        $pool = new ArrayAdapter();
+        $loader = new CountingLoader([
+            'color' => [
+                '$type' => 'color',
+                'primary' => [
+                    '$value' => '#ff0000',
+                ],
+            ],
+        ], fingerprint: 'https://cdn.example.com/tokens.json?v=1{a}');
+
+        $factory = new CachedTokenFactory($loader, $pool);
+
+        self::assertSame('rgb(255 0 0)', (string) $factory->create()->get('color.primary'));
+        self::assertMatchesRegularExpression('/^[A-Za-z0-9_.]+$/', $factory->cacheKey());
+        self::assertTrue($pool->getItem($factory->cacheKey())->isHit());
+        self::assertTrue($factory->cacheWritten());
+    }
+
+    public function testFailedWriteIsReportedRatherThanAssumedSuccessful(): void
+    {
+        // PSR-6 save() reports failure by returning false, not by throwing.
+        $pool = new FlakyPool(failSave: true);
+        $factory = new CachedTokenFactory($this->countingLoader(), $pool);
+
+        self::assertSame('rgb(255 0 0)', (string) $factory->create()->get('color.primary'));
+        self::assertFalse($factory->cacheWritten());
+    }
+
+    public function testSuccessfulWriteIsReported(): void
+    {
+        $factory = new CachedTokenFactory($this->countingLoader(), new ArrayAdapter());
+        $factory->create();
+
+        self::assertTrue($factory->cacheWritten());
+    }
+
+    public function testNoWriteAttemptIsDistinguishableFromAFailedOne(): void
+    {
+        $factory = new CachedTokenFactory($this->countingLoader());
+        $factory->create();
+
+        self::assertNull($factory->cacheWritten());
+    }
+
+    public function testPoisonedEntryIsOverwrittenRatherThanRetriedForever(): void
+    {
+        // An entry whose payload cannot be unserialized must be replaced, not
+        // re-read (and re-rejected) on every request.
+        $pool = new ArrayAdapter();
+        $factory = new CachedTokenFactory($this->countingLoader(), $pool);
+
+        $item = $pool->getItem($factory->cacheKey());
+        $item->set([
+            'mtime' => 1,
+            'values' => 'poison',
+            'metadata' => [],
+        ]);
+        $pool->save($item);
+
+        $factory->create();
+
+        self::assertTrue($factory->cacheWritten());
+        $fresh = new CountingLoader($this->countingLoader()->raw);
+        new CachedTokenFactory($fresh, $pool)->create();
+        self::assertSame(0, $fresh->loadCalls);
+    }
+
     public function testCorruptedPayloadIsTreatedAsMissAndOverwritten(): void
     {
         // A truncated write, a foreign entry under our key, or an
@@ -442,13 +539,6 @@ final class CachedTokenFactoryTest extends TestCase
             'mtime' => 1,
             'values' => [
                 'a' => 'not-a-value-object',
-            ],
-            'metadata' => [],
-        ]];
-        yield 'value entry has a non-string path' => [[
-            'mtime' => 1,
-            'values' => [
-                0 => ColorValue::fromHex('#ffffff'),
             ],
             'metadata' => [],
         ]];
