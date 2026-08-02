@@ -23,6 +23,7 @@
     },
     "require-dev": {
         "ergebnis/composer-normalize": "^2.50",
+        "infection/infection": "^0.34.1",
         "phpstan/phpstan": "^2.0",
         "phpstan/phpstan-strict-rules": "^2.0",
         "phpunit/phpunit": "^12 || ^13",
@@ -37,7 +38,7 @@
     },
     "suggest": {
         "symfony/http-kernel": "For the Symfony bundle (auto-wiring + Twig registration)",
-        "twig/twig": "For Twig template integration via TokenExtension"
+        "twig/twig": "For Twig template integration via TokenExtension (^3.21, needs attribute-based extensions)"
     },
     "minimum-stability": "stable",
     "prefer-stable": true,
@@ -53,7 +54,8 @@
     },
     "config": {
         "allow-plugins": {
-            "ergebnis/composer-normalize": true
+            "ergebnis/composer-normalize": true,
+            "infection/extension-installer": true
         },
         "sort-packages": true
     },
@@ -61,6 +63,10 @@
         "analyse": "vendor/bin/phpstan analyse --memory-limit=256M",
         "cs": "vendor/bin/ecs check",
         "cs:fix": "vendor/bin/ecs check --fix",
+        "infection": [
+            "@putenv XDEBUG_MODE=coverage",
+            "vendor/bin/infection --threads=max"
+        ],
         "qa": [
             "@analyse",
             "@cs",

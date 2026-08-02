@@ -4,3 +4,4 @@
 /.phpunit.cache/
 /.rector.cache/
 /.php-cs-fixer.cache
+/infection.log
