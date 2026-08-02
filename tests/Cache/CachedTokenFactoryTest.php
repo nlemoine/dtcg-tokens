@@ -5,10 +5,26 @@ declare(strict_types=1);
 namespace n5s\DtcgTokens\Tests\Cache;
 
 use n5s\DtcgTokens\Cache\CachedTokenFactory;
+use n5s\DtcgTokens\Loader\CacheableTokenLoaderInterface;
 use n5s\DtcgTokens\Loader\JsonFileLoader;
+use n5s\DtcgTokens\Parser\TokenMetadata;
 use n5s\DtcgTokens\Tokens;
+use n5s\DtcgTokens\Value\BooleanValue;
+use n5s\DtcgTokens\Value\BorderValue;
 use n5s\DtcgTokens\Value\ColorValue;
+use n5s\DtcgTokens\Value\CubicBezierValue;
+use n5s\DtcgTokens\Value\DimensionValue;
+use n5s\DtcgTokens\Value\FontFamilyValue;
+use n5s\DtcgTokens\Value\GradientValue;
+use n5s\DtcgTokens\Value\LinkValue;
+use n5s\DtcgTokens\Value\NumberValue;
+use n5s\DtcgTokens\Value\ShadowValue;
+use n5s\DtcgTokens\Value\StringValue;
+use n5s\DtcgTokens\Value\StrokeStyleValue;
+use n5s\DtcgTokens\Value\TransitionValue;
+use n5s\DtcgTokens\Value\TypographyValue;
 use PHPUnit\Framework\Attributes\CoversClass;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Psr\Cache\CacheItemPoolInterface;
 use Symfony\Component\Cache\Adapter\ArrayAdapter;
@@ -29,6 +45,107 @@ final class CachedTokenFactoryTest extends TestCase
 
         // Second call returns the very same in-memory instance (memoized).
         self::assertSame($tokens, $factory->create());
+    }
+
+    public function testCacheKeyCarriesAFormatVersion(): void
+    {
+        // The cached payload's shape is the value objects' private property
+        // layout. A version segment in the key invalidates pools that survive
+        // deploys (Redis, APCu) when that layout changes between releases.
+        $factory = new CachedTokenFactory(new JsonFileLoader(self::BASE));
+
+        // v2: TokenMetadata gained a `modes` property (serialized shape change).
+        self::assertStringStartsWith('n5s_dtcg_tokens.v2.', $factory->cacheKey());
+    }
+
+    public function testCacheVersionIsPinnedToTheSerializedShapes(): void
+    {
+        // The pool stores serialize()d value-object graphs: renaming a single
+        // private property is an internal change that becomes a production
+        // incident on any deploy sharing a persistent pool — unless
+        // CACHE_VERSION is bumped. This pin forces that discipline.
+        $classes = [
+            TokenMetadata::class,
+            BooleanValue::class,
+            BorderValue::class,
+            ColorValue::class,
+            CubicBezierValue::class,
+            DimensionValue::class,
+            FontFamilyValue::class,
+            GradientValue::class,
+            LinkValue::class,
+            NumberValue::class,
+            ShadowValue::class,
+            StringValue::class,
+            StrokeStyleValue::class,
+            TransitionValue::class,
+            TypographyValue::class,
+        ];
+
+        $shapes = [];
+        foreach ($classes as $class) {
+            $properties = array_map(
+                static fn (\ReflectionProperty $property): string => $property->getName() . ':' . $property->getType(),
+                new \ReflectionClass($class)->getProperties(),
+            );
+            sort($properties);
+            $shapes[$class] = $properties;
+        }
+
+        self::assertSame(
+            '396f3d02f6287c67964796cfa0a5cfd2',
+            hash('xxh128', (string) json_encode($shapes)),
+            'The serialized shape of cached value objects changed: bump CachedTokenFactory::CACHE_VERSION, then update this pinned hash.',
+        );
+    }
+
+    public function testTtlIsAppliedToCacheWrites(): void
+    {
+        $pool = new ArrayAdapter();
+
+        // A negative TTL writes an already-expired entry: if expiresAfter()
+        // is honored, the very next factory must miss and re-parse.
+        new CachedTokenFactory($this->countingLoader(), $pool, ttl: -1)->create();
+
+        $loader = $this->countingLoader();
+        new CachedTokenFactory($loader, $pool)->create();
+
+        self::assertSame(1, $loader->loadCalls);
+    }
+
+    public function testCustomCacheableLoaderIsAccepted(): void
+    {
+        // The factory must accept any cacheable loader, not just JsonFileLoader:
+        // a consumer's HTTP/database loader keeps caching support.
+        $loader = new class() implements CacheableTokenLoaderInterface {
+            public function load(): array
+            {
+                return [
+                    'color' => [
+                        '$type' => 'color',
+                        'primary' => [
+                            '$value' => '#00ff00',
+                        ],
+                    ],
+                ];
+            }
+
+            public function maxMtime(): int
+            {
+                return 0;
+            }
+
+            public function fingerprint(): string
+            {
+                return 'custom-loader-fingerprint';
+            }
+        };
+
+        $pool = new ArrayAdapter();
+        $factory = new CachedTokenFactory($loader, $pool);
+
+        self::assertSame('rgb(0 255 0)', (string) $factory->create()->get('color.primary'));
+        self::assertTrue($pool->getItem($factory->cacheKey())->isHit());
     }
 
     public function testDistinctSourcesDoNotCollideInSharedPool(): void
@@ -148,6 +265,72 @@ final class CachedTokenFactoryTest extends TestCase
         }
     }
 
+    public function testNonDebugWarmPoolHitNeverTouchesSources(): void
+    {
+        $pool = new ArrayAdapter();
+        new CachedTokenFactory($this->countingLoader(), $pool)->create();
+
+        // Fresh factory (empty in-process memo) over a warm pool: production
+        // mode must serve the hit without a single stat or read.
+        $loader = $this->countingLoader();
+        $tokens = new CachedTokenFactory($loader, $pool, debug: false)->create();
+
+        self::assertSame('rgb(255 0 0)', (string) $tokens->get('color.primary'));
+        self::assertSame(0, $loader->loadCalls);
+        self::assertSame(0, $loader->mtimeCalls);
+    }
+
+    public function testDebugMemoRevalidatesWhenSourcesChange(): void
+    {
+        // Long-running workers (FrankenPHP, RoadRunner): in debug, the
+        // in-process memo must not mask a source edit on later create() calls.
+        $loader = $this->countingLoader();
+        $factory = new CachedTokenFactory($loader, debug: true);
+
+        self::assertTrue($factory->create()->has('color.primary'));
+
+        $loader->raw = [
+            'color' => [
+                '$type' => 'color',
+                'two' => [
+                    '$value' => '#00ff00',
+                ],
+            ],
+        ];
+        $loader->mtime += 1_000;
+
+        $second = $factory->create();
+        self::assertTrue($second->has('color.two'));
+        self::assertFalse($second->has('color.primary'));
+    }
+
+    public function testDebugMemoIsReusedWhileSourcesUnchanged(): void
+    {
+        $loader = $this->countingLoader();
+        $factory = new CachedTokenFactory($loader, debug: true);
+
+        $first = $factory->create();
+
+        self::assertSame($first, $factory->create());
+        self::assertSame(1, $loader->loadCalls);
+    }
+
+    public function testDebugServesFreshPoolEntryWithoutReparsing(): void
+    {
+        // The fourth quadrant: debug=true AND stored mtime matches — the
+        // cached entry is fresh and must be served without a re-parse.
+        $pool = new ArrayAdapter();
+        $loader = $this->countingLoader();
+        $factory = new CachedTokenFactory($loader, $pool, debug: true);
+
+        $this->seedEntry($pool, $factory->cacheKey(), $loader->mtime);
+
+        $tokens = $factory->create();
+
+        self::assertTrue($tokens->has('color.stale'));
+        self::assertSame(0, $loader->loadCalls);
+    }
+
     public function testDebugReParsesWhenStoredMtimeIsStale(): void
     {
         $pool = new ArrayAdapter();
@@ -179,6 +362,181 @@ final class CachedTokenFactoryTest extends TestCase
         self::assertFalse($tokens->has('color.primary'));
     }
 
+    public function testThrowingPoolFallsBackToFreshParse(): void
+    {
+        // The cache is an optimization, not a dependency: a pool whose
+        // backend is down must not take token resolution down with it.
+        $pool = new FlakyPool(throwOnGetItem: true);
+        $factory = new CachedTokenFactory($this->countingLoader(), $pool);
+
+        $tokens = $factory->create();
+
+        self::assertSame('rgb(255 0 0)', (string) $tokens->get('color.primary'));
+    }
+
+    public function testSaveFailureDoesNotDiscardParsedTokens(): void
+    {
+        // The parse already succeeded when save() runs; a write failure only
+        // costs the next request a re-parse.
+        $pool = new FlakyPool(throwOnSave: true);
+        $factory = new CachedTokenFactory($this->countingLoader(), $pool);
+
+        $tokens = $factory->create();
+
+        self::assertSame('rgb(255 0 0)', (string) $tokens->get('color.primary'));
+    }
+
+    public function testCorruptedPayloadIsTreatedAsMissAndOverwritten(): void
+    {
+        // A truncated write, a foreign entry under our key, or an
+        // __PHP_Incomplete_Class must behave as a miss, not a TypeError.
+        $pool = new ArrayAdapter();
+        $factory = new CachedTokenFactory($this->countingLoader(), $pool);
+
+        $item = $pool->getItem($factory->cacheKey());
+        $item->set('garbage, not our payload shape');
+        $pool->save($item);
+
+        $tokens = $factory->create();
+
+        self::assertSame('rgb(255 0 0)', (string) $tokens->get('color.primary'));
+        // Self-healing: the corrupted entry was replaced by a valid one.
+        $fresh = new CachedTokenFactory($this->countingLoader(), $pool, debug: false)->create();
+        self::assertSame('rgb(255 0 0)', (string) $fresh->get('color.primary'));
+    }
+
+    /**
+     * @return iterable<string, array{mixed}>
+     */
+    public static function provideInvalidPayloads(): iterable
+    {
+        yield 'not an array' => ['garbage'];
+        yield 'missing mtime' => [[
+            'values' => [],
+            'metadata' => [],
+        ]];
+        yield 'non-int mtime' => [[
+            'mtime' => 'yesterday',
+            'values' => [],
+            'metadata' => [],
+        ]];
+        yield 'missing values' => [[
+            'mtime' => 1,
+            'metadata' => [],
+        ]];
+        yield 'non-array values' => [[
+            'mtime' => 1,
+            'values' => 'nope',
+            'metadata' => [],
+        ]];
+        yield 'missing metadata' => [[
+            'mtime' => 1,
+            'values' => [],
+        ]];
+        yield 'non-array metadata' => [[
+            'mtime' => 1,
+            'values' => [],
+            'metadata' => 'nope',
+        ]];
+        yield 'value entry is not a token value' => [[
+            'mtime' => 1,
+            'values' => [
+                'a' => 'not-a-value-object',
+            ],
+            'metadata' => [],
+        ]];
+        yield 'value entry has a non-string path' => [[
+            'mtime' => 1,
+            'values' => [
+                0 => ColorValue::fromHex('#ffffff'),
+            ],
+            'metadata' => [],
+        ]];
+        yield 'metadata entry is not TokenMetadata' => [[
+            'mtime' => 1,
+            'values' => [],
+            'metadata' => [
+                'a' => 'not-metadata',
+            ],
+        ]];
+    }
+
+    #[DataProvider('provideInvalidPayloads')]
+    public function testEveryInvalidPayloadShapeIsTreatedAsMiss(mixed $payload): void
+    {
+        $pool = new ArrayAdapter();
+        $factory = new CachedTokenFactory($this->countingLoader(), $pool, debug: false);
+
+        $item = $pool->getItem($factory->cacheKey());
+        $item->set($payload);
+        $pool->save($item);
+
+        // Any shape defect must fall through to a fresh parse, never a hit.
+        self::assertSame('rgb(255 0 0)', (string) $factory->create()->get('color.primary'));
+    }
+
+    public function testDebugTreatsUnknownMtimeAsAlwaysStale(): void
+    {
+        // A loader honestly reporting "mtime unknown" (0, per the interface
+        // contract) must not freeze the cache: 0 === 0 is not freshness.
+        $pool = new ArrayAdapter();
+        $loader = new CountingLoader([
+            'color' => [
+                '$type' => 'color',
+                'primary' => [
+                    '$value' => '#ff0000',
+                ],
+            ],
+        ], mtime: 0);
+        $factory = new CachedTokenFactory($loader, $pool, debug: true);
+
+        $this->seedEntry($pool, $factory->cacheKey(), 0);
+
+        $tokens = $factory->create();
+
+        self::assertTrue($tokens->has('color.primary'));
+        self::assertFalse($tokens->has('color.stale'));
+    }
+
+    public function testDebugMemoIsNotReusedWhenMtimeUnknown(): void
+    {
+        $loader = new CountingLoader([
+            'color' => [
+                '$type' => 'color',
+                'primary' => [
+                    '$value' => '#ff0000',
+                ],
+            ],
+        ], mtime: 0);
+        $factory = new CachedTokenFactory($loader, debug: true);
+
+        self::assertTrue($factory->create()->has('color.primary'));
+
+        $loader->raw = [
+            'color' => [
+                '$type' => 'color',
+                'two' => [
+                    '$value' => '#00ff00',
+                ],
+            ],
+        ];
+
+        // mtime stays 0 (unknown): debug must re-parse rather than trust it.
+        self::assertTrue($factory->create()->has('color.two'));
+    }
+
+    private function countingLoader(): CountingLoader
+    {
+        return new CountingLoader([
+            'color' => [
+                '$type' => 'color',
+                'primary' => [
+                    '$value' => '#ff0000',
+                ],
+            ],
+        ]);
+    }
+
     /**
      * Pre-seed the pool, under the factory's own key, with an entry whose mtime
      * is deliberately older than the loader's current maxMtime and whose values
@@ -186,14 +544,21 @@ final class CachedTokenFactoryTest extends TestCase
      */
     private function seedStaleEntry(CacheItemPoolInterface $pool, string $key, int $currentMtime): void
     {
-        $stale = new Tokens([])->all() + [
-            'color.stale' => ColorValue::fromHex('#abcdef'),
-        ];
+        $this->seedEntry($pool, $key, $currentMtime - 1000);
+    }
 
+    /**
+     * Pre-seed the pool with a recognizable entry ("color.stale") at an
+     * arbitrary stored mtime.
+     */
+    private function seedEntry(CacheItemPoolInterface $pool, string $key, int $mtime): void
+    {
         $item = $pool->getItem($key);
         $item->set([
-            'mtime' => $currentMtime - 1000,
-            'values' => $stale,
+            'mtime' => $mtime,
+            'values' => [
+                'color.stale' => ColorValue::fromHex('#abcdef'),
+            ],
             'metadata' => [],
         ]);
         $pool->save($item);

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace n5s\DtcgTokens\Tests\Loader;
 
 use n5s\DtcgTokens\Exception\TokenException;
+use n5s\DtcgTokens\Loader\CacheableTokenLoaderInterface;
 use n5s\DtcgTokens\Loader\JsonFileLoader;
 use n5s\DtcgTokens\Loader\TokenLoaderInterface;
 use PHPUnit\Framework\Attributes\CoversClass;
@@ -20,6 +21,11 @@ final class JsonFileLoaderTest extends TestCase
     public function testImplementsInterface(): void
     {
         self::assertInstanceOf(TokenLoaderInterface::class, new JsonFileLoader(self::BASE));
+    }
+
+    public function testImplementsCacheableInterface(): void
+    {
+        self::assertInstanceOf(CacheableTokenLoaderInterface::class, new JsonFileLoader(self::BASE));
     }
 
     public function testLoadsSingleFile(): void
@@ -62,7 +68,51 @@ final class JsonFileLoaderTest extends TestCase
         $this->expectException(TokenException::class);
         $this->expectExceptionMessage('does-not-exist.json');
 
-        @$loader->load();
+        // No @ suppression: a missing file must raise a clean TokenException,
+        // not an E_WARNING (which Symfony's ErrorHandler would promote to
+        // ErrorException before our guard ever ran).
+        $loader->load();
+    }
+
+    public function testThrowsOnUnreadableFile(): void
+    {
+        if (\function_exists('posix_geteuid') && posix_geteuid() === 0) {
+            self::markTestSkipped('root bypasses file permissions');
+        }
+
+        $tmp = tempnam(sys_get_temp_dir(), 'dtcg');
+        self::assertIsString($tmp);
+        file_put_contents($tmp, '{}');
+        chmod($tmp, 0o000);
+
+        try {
+            $loader = new JsonFileLoader($tmp);
+
+            $this->expectException(TokenException::class);
+            $this->expectExceptionMessage('Cannot read token file');
+
+            $loader->load();
+        } finally {
+            chmod($tmp, 0o644);
+            unlink($tmp);
+        }
+    }
+
+    public function testStripsUtf8BomBeforeDecoding(): void
+    {
+        // Designer-tool exports regularly carry a UTF-8 BOM; json_decode
+        // rejects it with an unhelpful "Syntax error".
+        $tmp = tempnam(sys_get_temp_dir(), 'dtcg');
+        self::assertIsString($tmp);
+        file_put_contents($tmp, "\xEF\xBB\xBF" . '{"color":{"$type":"color","primary":{"$value":"#ff0000"}}}');
+
+        try {
+            $raw = new JsonFileLoader($tmp)->load();
+
+            self::assertSame('#ff0000', $raw['color']['primary']['$value']);
+        } finally {
+            unlink($tmp);
+        }
     }
 
     public function testThrowsOnNonArrayTopLevel(): void
@@ -104,6 +154,27 @@ final class JsonFileLoaderTest extends TestCase
         }
     }
 
+    public function testFingerprintNormalizesEquivalentPaths(): void
+    {
+        // "tests/Loader/../fixtures/base.json" and its canonical form point at
+        // the same file: two apps loading it via different working paths must
+        // share one cache entry.
+        $canonical = realpath(self::BASE);
+        self::assertIsString($canonical);
+
+        self::assertSame(
+            new JsonFileLoader($canonical)->fingerprint(),
+            new JsonFileLoader(self::BASE)->fingerprint(),
+        );
+    }
+
+    public function testFingerprintOfMissingFileFallsBackToPathAsWritten(): void
+    {
+        $loader = new JsonFileLoader(__DIR__ . '/../fixtures/does-not-exist.json');
+
+        self::assertNotSame('', $loader->fingerprint());
+    }
+
     public function testMaxMtimeIsPositive(): void
     {
         $loader = new JsonFileLoader(self::BASE, self::OVERRIDES);
@@ -126,7 +197,54 @@ final class JsonFileLoaderTest extends TestCase
         $expected = filemtime(self::BASE);
         self::assertIsInt($expected);
         // The missing path is skipped (not fatal); the existing file's mtime wins.
-        self::assertSame($expected, @$loader->maxMtime());
+        self::assertSame($expected, $loader->maxMtime());
+    }
+
+    public function testThreeFileMergeChainLayersInOrder(): void
+    {
+        $base = $this->writeTempJson([
+            'color' => [
+                '$type' => 'color',
+                'a' => [
+                    '$value' => '#111111',
+                ],
+                'b' => [
+                    '$value' => '#222222',
+                ],
+            ],
+        ]);
+        $middle = $this->writeTempJson([
+            'color' => [
+                'b' => [
+                    '$value' => '#333333',
+                ],
+                'c' => [
+                    '$value' => '#444444',
+                ],
+            ],
+        ]);
+        $last = $this->writeTempJson([
+            'color' => [
+                'c' => [
+                    '$value' => '#555555',
+                ],
+            ],
+        ]);
+
+        try {
+            $raw = new JsonFileLoader($base, $middle, $last)->load();
+
+            // Untouched from file 1; overridden by file 2; overridden twice,
+            // last file wins. Group $type survives the whole chain.
+            self::assertSame('#111111', $raw['color']['a']['$value']);
+            self::assertSame('#333333', $raw['color']['b']['$value']);
+            self::assertSame('#555555', $raw['color']['c']['$value']);
+            self::assertSame('color', $raw['color']['$type']);
+        } finally {
+            unlink($base);
+            unlink($middle);
+            unlink($last);
+        }
     }
 
     public function testLaterFileReplacesListValueWholesale(): void
