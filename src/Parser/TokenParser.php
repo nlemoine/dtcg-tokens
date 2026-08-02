@@ -71,7 +71,9 @@ final class TokenParser
     public function parse(array $raw): ParseResult
     {
         // Step 1: Flatten tree into raw entries with inherited $type and $deprecated
-        /** @var array<string, RawEntry> $entries */
+        // array-key, not string: PHP canonicalizes a numeric token path
+        // ("4", "2024") to an int array key.
+        /** @var array<array-key, RawEntry> $entries */
         $entries = [];
         $this->walkTree($raw, '', null, false, $entries);
 
@@ -84,6 +86,10 @@ final class TokenParser
         /** @var array<string, TokenMetadata> $metadata */
         $metadata = [];
         foreach ($entries as $path => $entry) {
+            // PHP canonicalizes numeric keys ("4", "2024") to ints; paths are
+            // strings everywhere downstream, including the cache payload.
+            $path = (string) $path;
+
             try {
                 $base = $resolver->resolve($path, null);
 
@@ -112,7 +118,7 @@ final class TokenParser
      * Walk the JSON tree, collecting token entries with inherited $type and $deprecated.
      *
      * @param array<string, mixed> $node
-     * @param array<string, RawEntry> $entries
+     * @param array<array-key, RawEntry> $entries
      */
     private function walkTree(array $node, string $prefix, ?string $inheritedType, bool $inheritedDeprecated, array &$entries): void
     {
@@ -524,6 +530,13 @@ final class TokenParser
                 ));
             }
 
+            if (isset($value['hex']) && ! \is_string($value['hex'])) {
+                throw TokenException::invalidValue(\sprintf(
+                    'DTCG color "hex" must be a string, got %s.',
+                    get_debug_type($value['hex']),
+                ));
+            }
+
             $rawComponents = $value['channels'] ?? $value['components'] ?? null;
             if ($rawComponents === null) {
                 throw TokenException::invalidValue('DTCG color must have "channels" or "components".');
@@ -694,17 +707,28 @@ final class TokenParser
             /** @var list<DimensionValue> $dashArray */
             $dashArray = [];
             $rawDashArray = $value['dashArray'] ?? [];
-            if (\is_array($rawDashArray)) {
-                foreach ($rawDashArray as $entry) {
-                    if (\is_array($entry)) {
-                        $dashArray[] = $this->buildDimension($entry);
-                    } elseif (is_numeric($entry)) {
-                        // Bare number: DTCG implies pixels for dash lengths.
-                        $dashArray[] = new DimensionValue(
-                            $this->requireNumeric($entry, 'StrokeStyle dashArray entry'),
-                            self::DEFAULT_DIMENSION_UNIT,
-                        );
-                    }
+            if (! \is_array($rawDashArray)) {
+                throw TokenException::invalidValue(\sprintf(
+                    'StrokeStyle dashArray must be an array of dimensions, got %s.',
+                    get_debug_type($rawDashArray),
+                ));
+            }
+
+            foreach ($rawDashArray as $entry) {
+                if (\is_array($entry)) {
+                    $dashArray[] = $this->buildDimension($entry);
+                } elseif (is_numeric($entry)) {
+                    // Bare number: DTCG implies pixels for dash lengths.
+                    $dashArray[] = new DimensionValue(
+                        $this->requireNumeric($entry, 'StrokeStyle dashArray entry'),
+                        self::DEFAULT_DIMENSION_UNIT,
+                    );
+                } else {
+                    // Dropping it silently would render a dashed token solid.
+                    throw TokenException::invalidValue(\sprintf(
+                        'StrokeStyle dashArray entry must be a dimension object or a number, got %s.',
+                        get_debug_type($entry),
+                    ));
                 }
             }
 
@@ -715,7 +739,7 @@ final class TokenParser
                 if (! \is_string($rawLineCap) || ! \in_array($rawLineCap, self::LINE_CAPS, true)) {
                     throw TokenException::invalidValue(\sprintf(
                         'Invalid strokeStyle lineCap "%s"; expected one of %s.',
-                        \is_string($rawLineCap) ? $rawLineCap : get_debug_type($rawLineCap),
+                        \is_string($rawLineCap) ? Str::excerpt($rawLineCap) : get_debug_type($rawLineCap),
                         implode(', ', self::LINE_CAPS),
                     ));
                 }

@@ -19,6 +19,7 @@ final class FlakyPool implements CacheItemPoolInterface
     public function __construct(
         public bool $throwOnGetItem = false,
         public bool $throwOnSave = false,
+        public bool $failSave = false,
     ) {
         $this->inner = new ArrayAdapter();
     }
@@ -69,6 +70,12 @@ final class FlakyPool implements CacheItemPoolInterface
     {
         if ($this->throwOnSave) {
             throw new \RuntimeException('pool backend unreachable');
+        }
+
+        if ($this->failSave) {
+            // PSR-6 allows reporting failure by return value alone (an
+            // oversized payload, a full backend).
+            return false;
         }
 
         return $this->inner->save($item);

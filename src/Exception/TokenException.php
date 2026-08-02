@@ -47,7 +47,20 @@ class TokenException extends \RuntimeException
      */
     public static function circularAlias(string $path, array $chain): TokenParseException
     {
-        return new TokenParseException(\sprintf('Circular alias detected at "%s": %s', $path, implode(' → ', $chain)));
+        return new TokenParseException(\sprintf(
+            'Circular alias detected at "%s": %s',
+            Str::excerpt($path),
+            Str::excerpt(implode(' → ', $chain)),
+        ));
+    }
+
+    public static function aliasChainTooDeep(string $path, int $limit): TokenParseException
+    {
+        return new TokenParseException(\sprintf(
+            'Alias chain is too deep at "%s": more than %d hops. Flatten the chain, or check for an unintended reference.',
+            Str::excerpt($path),
+            $limit,
+        ));
     }
 
     public static function unsupportedType(?string $type): TokenParseException
@@ -76,14 +89,14 @@ class TokenException extends \RuntimeException
 
     public static function fileNotReadable(string $path): TokenFileException
     {
-        return new TokenFileException(\sprintf('Cannot read token file "%s".', $path));
+        return new TokenFileException(\sprintf('Cannot read token file "%s".', Str::excerpt($path)));
     }
 
     public static function notAnObject(string $path, string $actualType): TokenFileException
     {
         return new TokenFileException(\sprintf(
             'Token file "%s" must contain a JSON object, got %s.',
-            $path,
+            Str::excerpt($path),
             $actualType,
         ));
     }
@@ -91,7 +104,7 @@ class TokenException extends \RuntimeException
     public static function invalidJson(string $path, \JsonException $previous): TokenFileException
     {
         return new TokenFileException(
-            \sprintf('Token file "%s" contains invalid JSON: %s', $path, $previous->getMessage()),
+            \sprintf('Token file "%s" contains invalid JSON: %s', Str::excerpt($path), $previous->getMessage()),
             0,
             $previous,
         );

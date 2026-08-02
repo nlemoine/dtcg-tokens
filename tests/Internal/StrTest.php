@@ -24,4 +24,15 @@ final class StrTest extends TestCase
         self::assertStringStartsWith(str_repeat('a', 120), $excerpt);
         self::assertStringContainsString('5000 bytes', $excerpt);
     }
+
+    public function testTruncationKeepsValidUtf8(): void
+    {
+        // A byte-level cut through a multi-byte sequence makes the message
+        // unencodable: JSON log formatters drop the whole record.
+        $excerpt = Str::excerpt(str_repeat('é', 200));
+
+        self::assertTrue(mb_check_encoding($excerpt, 'UTF-8'));
+        self::assertNotFalse(json_encode($excerpt));
+        self::assertLessThanOrEqual(200, \strlen($excerpt));
+    }
 }

@@ -9,6 +9,7 @@ use n5s\DtcgTokens\Export\CssExporter;
 use n5s\DtcgTokens\Tokens;
 use n5s\DtcgTokens\Value\ColorValue;
 use PHPUnit\Framework\Attributes\CoversClass;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
 #[CoversClass(CssExporter::class)]
@@ -120,6 +121,77 @@ final class CssExporterTest extends TestCase
         $this->expectExceptionMessage('both map to the CSS custom property "--a-b"');
 
         new CssExporter()->export($tokens);
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function provideUnsafeValues(): iterable
+    {
+        // <style> is an HTML raw-text element: the tokenizer scans for the
+        // bytes "</style" with no CSS awareness, so no CSS-level guard applies.
+        yield 'html breakout' => ['</style><script>alert(1)</script>'];
+        yield 'angle bracket' => ['a < b'];
+        // Ordinary, non-adversarial content that still breaks the declaration.
+        yield 'inch mark opens a string' => ['12" display'];
+        yield 'apostrophe opens a string' => ["Bob's font"];
+        yield 'unclosed function token' => ['url(/logo_(v2.svg'];
+        yield 'stray closing paren' => ['rgb(0 0 0))'];
+        yield 'trailing backslash escapes the terminator' => ['red\\'];
+        yield 'newline' => ["Foo\nBar"];
+        yield 'carriage return' => ["Foo\rBar"];
+        yield 'nul byte' => ["Foo\0Bar"];
+    }
+
+    #[DataProvider('provideUnsafeValues')]
+    public function testValueThatCannotBeSafelyEmittedIsRejected(string $value): void
+    {
+        $tokens = Tokens::fromArray([
+            'x' => [
+                '$type' => 'string',
+                '$value' => $value,
+            ],
+        ]);
+
+        $this->expectException(TokenException::class);
+        $this->expectExceptionMessage('cannot be exported');
+
+        new CssExporter()->export($tokens);
+    }
+
+    public function testLegitimateNestedAndQuotedValuesStillExport(): void
+    {
+        // Regression guard for the checks above: real output nests functions
+        // and carries quoted strings with escaped quotes and backslashes.
+        $tokens = Tokens::fromArray([
+            'grad' => [
+                '$type' => 'gradient',
+                '$value' => [
+                    [
+                        'color' => '#ff0000',
+                        'position' => 0,
+                    ],
+                    [
+                        'color' => '#0000ff',
+                        'position' => 1,
+                    ],
+                ],
+            ],
+            'font' => [
+                '$type' => 'fontFamily',
+                '$value' => ['Helvetica Neue', 'My "Quoted" Face', 'back\\slash', 'sans-serif'],
+            ],
+            'ease' => [
+                '$type' => 'cubicBezier',
+                '$value' => [0.25, 0.1, 0.25, 1.0],
+            ],
+        ]);
+
+        $css = new CssExporter()->export($tokens);
+
+        self::assertStringContainsString('linear-gradient(rgb(255 0 0) 0%, rgb(0 0 255) 100%)', $css);
+        self::assertStringContainsString('"Helvetica Neue", "My \"Quoted\" Face", "back\\\\slash", sans-serif', $css);
+        self::assertStringContainsString('cubic-bezier(0.25, 0.1, 0.25, 1)', $css);
     }
 
     public function testNonAsciiTokenPathExports(): void
