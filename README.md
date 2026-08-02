@@ -33,9 +33,12 @@ $tokens->get('color.primary', 'dark'); // mode-aware lookup
 Tokens::fromFile('tokens.json');                       // single file
 Tokens::fromFiles(['base.json', 'overrides.json']);    // merged, later files win
 Tokens::fromArray(['color' => ['$type' => 'color', /* ... */]]);
+Tokens::fromLoader($myLoader);                         // any TokenLoaderInterface (HTTP, DB, ...)
 ```
 
-Other methods: `has(string $path): bool`, `all(): array<string, TokenValueInterface>`, and `get(string $path, ?string $mode = null)`. Unknown paths throw a `TokenException`. Per-token metadata is available via `metadata(string $path): ?TokenMetadata` and `allMetadata()` (carrying `$description` and `$deprecated`).
+Other methods: `has(string $path): bool`, `all(): array<string, TokenValueInterface>`, `get(string $path, ?string $mode = null)`, `modes(): list<string>`, and `forMode(string $mode): Tokens`. Per-token metadata is available via `metadata(string $path): ?TokenMetadata` and `allMetadata()` (carrying `$description`, `$deprecated` and `$modes`).
+
+Every failure is a `TokenException`; catch a subtype for differentiated handling: `TokenNotFoundException` (unknown path — consumer-side), `TokenFileException` (unreadable/invalid source file — deployment-side), `TokenParseException` (invalid token content — fix the token file).
 
 ## Supported token types
 
@@ -62,9 +65,21 @@ The parser handles the following DTCG `$type` values:
 
 ### Color spaces
 
-`ColorValue` accepts hex strings (`#rrggbb` and `#rrggbbaa`) and DTCG color objects. Colors are stored **losslessly** in their authored color space — the `components` (with `null` representing a CSS `none` / powerless channel) and `alpha` are kept verbatim, never squashed to sRGB at parse time.
+`ColorValue` accepts hex strings (`#rgb`, `#rgba`, `#rrggbb`, `#rrggbbaa` — anything else, including named colors, throws a `TokenException`) and DTCG color objects. Colors are stored **losslessly** in their authored color space — the `components` (with `null` representing a CSS `none` / powerless channel) and `alpha` are kept verbatim, never squashed to sRGB at parse time.
 
 The accepted color spaces match the CSS Color 4 / terrazzo set: `srgb`, `srgb-linear`, `display-p3`, `a98-rgb`, `prophoto-rgb`, `rec2020`, `lab`, `lab-d65`, `lch`, `oklab`, `oklch`, `okhsv`, `hsl`, `hwb`, `xyz`, `xyz-d50`, `xyz-d65`. An unknown space throws.
+
+Component ranges follow the [DTCG Color module](https://www.designtokens.org/TR/drafts/color/) (CSS Color 4 conventions):
+
+| Color space(s)                          | Components                                        |
+| --------------------------------------- | ------------------------------------------------- |
+| `srgb`, `srgb-linear`, `display-p3`, `a98-rgb`, `prophoto-rgb`, `rec2020` | channels `0`–`1`  |
+| `hsl`                                   | H `0`–`360`, S `0`–`100`, L `0`–`100`             |
+| `hwb`                                   | H `0`–`360`, W `0`–`100`, B `0`–`100`             |
+| `lab`, `lab-d65`, `lch`                 | L `0`–`100`                                       |
+| `oklab`, `oklch`                        | L `0`–`1`                                         |
+
+Components are stored verbatim (no parse-time validation of ranges); out-of-range values are clamped — and hue wrapped into `[0, 360)` — only when reducing to 8-bit sRGB via `toHex()` / `toRgb()`, mirroring how CSS clamps at render time. A color that the sRGB converter cannot handle throws a `TokenException`.
 
 `fontWeight` keywords (`thin`, `light`, `regular`, `medium`, `semi-bold`, `bold`, `black`, …) are mapped to their numeric equivalents; an unknown keyword, or a numeric weight outside `1`–`1000`, throws a `TokenException`.
 
@@ -84,7 +99,7 @@ Casting to string emits faithful CSS Color 4 — no gamut conversion:
 | `display-p3`, `a98-rgb`, `prophoto-rgb`, `rec2020`, `srgb-linear`, `xyz`, `xyz-d50`, `xyz-d65` | `color(<space> c1 c2 c3)` |
 | `okhsv`                                                                   | hex fallback (no CSS function)      |
 
-A `null` component renders as `none`; alpha below `1` is appended as ` / A` inside the function. `okhsv` has no CSS function, so `toCss()` emits the author-provided `hex` fallback if present, otherwise it throws.
+A `null` component renders as `none`; alpha below `1` is appended as ` / A` inside the function. `okhsv` has no CSS function, so a `hex` fallback is **required at parse time** (a missing one throws immediately, not mid-render) and `toCss()` emits it.
 
 #### Conversion to sRGB (`toHex()` / `toRgb()`)
 
@@ -97,7 +112,9 @@ For example, `display-p3 [1 0 0]` serializes to `color(display-p3 1 0 0)`; `toHe
 
 ## Value objects
 
-Every token resolves to an immutable value object implementing `TokenValueInterface extends \Stringable`. Casting to string produces a CSS-ready representation, so value objects can be dropped straight into templates or stylesheets.
+Every token resolves to an immutable value object implementing `TokenValueInterface extends \Stringable`. Casting to string — or calling `toCss()`, they are interchangeable — produces a CSS-ready representation, so value objects can be dropped straight into templates or stylesheets.
+
+Composite values expose their components: `BorderValue` (`color()`, `width()`, `style()`), `TransitionValue` (`duration()`, `delay()`, `timingFunction()`), `GradientValue` (`stops()`), `ShadowValue` (`layers()`), `TypographyValue` (`fontFamily()`, `fontSize()`, …), `CubicBezierValue` (`points()`), `FontFamilyValue` (`families()`).
 
 Color tokens additionally expose `toHex()` and `toRgb(?float $alpha = null)`:
 
@@ -137,7 +154,18 @@ $tokens->get('color.fg')->forMode('nope');   // falls back to the base value
 
 An unknown mode falls back to the base value rather than throwing.
 
-Modes work for every standard DTCG token type — `color`, `dimension`, `number`, `fontFamily`, `fontWeight`, `duration`, `cubicBezier`, `strokeStyle`, `border`, `transition`, `shadow`, `gradient`, and `typography`. (The non-spec `boolean`, `string`, and `link` extras are not mode-aware and always return their base value.)
+Modes work for **every** token type, including the non-spec `boolean`, `string`, and `link` extras (a per-theme logo URL is a `link` with a `dark` mode).
+
+Two collection-level helpers cover enumeration and themed rendering:
+
+```php
+$tokens->modes();          // ["dark", "dense"] — union of every token's modes
+$dark = $tokens->forMode('dark');   // a new collection, every token bound to dark
+```
+
+Per-token mode names are also on the metadata: `$tokens->metadata('color.fg')->modes`.
+
+One rule to know: mode-bound values are **mode-terminal** — a value returned by `forMode()` (or a component accessor of a composite) carries no sibling map, so calling `forMode()` on it again returns itself. Always bind modes from the base value, or use `Tokens::forMode()` on the collection.
 
 ### Aliases and modes
 
@@ -192,7 +220,7 @@ Then in templates:
 {{ token('color.fg', 'dark')|hex }}   {# mode-aware lookup #}
 ```
 
-The `hex` and `rgb` filters only accept color tokens and throw a `LogicException` otherwise.
+The `hex` and `rgb` filters only accept color tokens and throw a `TokenException` otherwise.
 
 ## Symfony
 
@@ -248,14 +276,17 @@ echo new CssExporter()->export($tokens);
 }
 ```
 
-The constructor takes an optional `prefix` and `selector`:
+The constructor takes an optional `prefix` and `selector`. Themed output combines a selector with `Tokens::forMode()`:
 
 ```php
-new CssExporter(prefix: 'ds', selector: '.theme-dark')->export($tokens);
-// .theme-dark { --ds-color-primary: rgb(0 0 0); ... }
+new CssExporter()->export($tokens);
+new CssExporter(selector: '[data-theme="dark"]')->export($tokens->forMode('dark'));
+// [data-theme="dark"] { --color-fg: rgb(0 0 0); ... }
 ```
 
 Token paths are slugged by replacing `.` and spaces with `-`; values use each value object's string form.
+
+Names and values are emitted verbatim, so the exporter refuses anything able to break out of its declaration: a token path that does not slug to a valid custom property name, or a serialized value containing `;`, `{`, `}` or `/*`, throws a `TokenException` (no silent escaping — that would create colliding names and altered values). Token files are treated as trusted developer input; if yours come from an external source (CMS, user upload, third-party export), validate them upstream.
 
 ## Caching
 
@@ -269,20 +300,26 @@ $factory = new CachedTokenFactory(
     loader: JsonFileLoader::fromPaths(['tokens.json']),
     cache: $psr6Pool,   // any Psr\Cache\CacheItemPoolInterface, or null
     debug: $isDebug,
+    ttl: 86_400,        // optional; null = entries live until evicted
 );
 
 $tokens = $factory->create();
 ```
 
+With `debug: false` the pool entry is served without any freshness check, so a pool that **survives deploys** (Redis, APCu) keeps serving the previous release's tokens. Either set a `ttl`, or clear the entry on deploy — its key is exposed as `$factory->cacheKey()`. A pool failure is never fatal: the factory falls back to a fresh parse.
+
 Without a cache pool it simply parses on first `create()` and reuses the result in-process. The Symfony bundle wires this factory for you.
+
+The factory accepts any `CacheableTokenLoaderInterface` — a `TokenLoaderInterface` extended with `maxMtime()` and `fingerprint()` — so a custom loader (HTTP, database, …) keeps caching support. `JsonFileLoader` implements it. Cache keys carry a format version segment, so entries written by an older release miss instead of unserializing into changed value-object classes.
 
 ## Development
 
 ```bash
-composer qa   # PHPStan (max), ECS, Rector, PHPUnit
+composer qa          # PHPStan (max), ECS, Rector, PHPUnit
+composer infection   # mutation testing (Infection, needs Xdebug or pcov)
 ```
 
-Built and tested against PHP 8.4. PHPStan runs at max level with strict rules; ECS and Rector enforce style and modernization.
+Built and tested against PHP 8.4. PHPStan runs at max level with strict rules; ECS and Rector enforce style and modernization; [Infection](https://infection.github.io/) guards test strength with a minimum MSI.
 
 ## Limitations
 
