@@ -6,7 +6,7 @@ namespace n5s\DtcgTokens\Loader;
 
 use n5s\DtcgTokens\Exception\TokenException;
 
-final readonly class JsonFileLoader implements TokenLoaderInterface
+final readonly class JsonFileLoader implements CacheableTokenLoaderInterface
 {
     /**
      * @var list<string>
@@ -32,9 +32,24 @@ final readonly class JsonFileLoader implements TokenLoaderInterface
     {
         $merged = [];
         foreach ($this->filePaths as $filePath) {
-            $json = file_get_contents($filePath);
+            // Pre-check instead of relying on file_get_contents() returning
+            // false: it raises E_WARNING first, which error handlers like
+            // Symfony's promote to an exception before our guard runs.
+            if (! is_file($filePath) || ! is_readable($filePath)) {
+                throw TokenException::fileNotReadable($filePath);
+            }
+
+            // @: the file can still vanish between the check and the read;
+            // the false-check below covers that race without a stray warning.
+            $json = @file_get_contents($filePath);
             if ($json === false) {
                 throw TokenException::fileNotReadable($filePath);
+            }
+
+            // Designer-tool exports regularly carry a UTF-8 BOM, which
+            // json_decode rejects with an unhelpful "Syntax error".
+            if (str_starts_with($json, "\xEF\xBB\xBF")) {
+                $json = substr($json, 3);
             }
 
             try {
@@ -72,12 +87,21 @@ final readonly class JsonFileLoader implements TokenLoaderInterface
      * A stable identifier for this loader's source set, for use as a cache-key
      * component. Order-sensitive (matching merge order): two loaders over the
      * same paths share it, different paths produce different values.
-     *
-     * @internal
      */
     public function fingerprint(): string
     {
-        return hash('xxh128', implode("\0", $this->filePaths));
+        // Canonicalize so "a/../b.json" and "b.json" share one cache entry;
+        // a path that does not resolve (yet) participates as written.
+        $paths = array_map(
+            static function (string $path): string {
+                $real = realpath($path);
+
+                return $real === false ? $path : $real;
+            },
+            $this->filePaths,
+        );
+
+        return hash('xxh128', implode("\0", $paths));
     }
 
     /**
