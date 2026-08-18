@@ -31,9 +31,13 @@ final class SrgbConverterTest extends TestCase
     {
         // hsl(210 100% 50%) is rgb(0 127.5 255); browsers round half up.
         self::assertSame([0, 128, 255], SrgbConverter::toRgbChannels('hsl', [210.0, 100.0, 50.0]));
+        // One per 60-degree sector, so no arm of the hue match goes unchecked.
         self::assertSame([255, 0, 0], SrgbConverter::toRgbChannels('hsl', [0.0, 100.0, 50.0]));
+        self::assertSame([128, 255, 0], SrgbConverter::toRgbChannels('hsl', [90.0, 100.0, 50.0]));
         self::assertSame([0, 255, 0], SrgbConverter::toRgbChannels('hsl', [120.0, 100.0, 50.0]));
+        self::assertSame([0, 255, 128], SrgbConverter::toRgbChannels('hsl', [150.0, 100.0, 50.0]));
         self::assertSame([0, 0, 255], SrgbConverter::toRgbChannels('hsl', [240.0, 100.0, 50.0]));
+        self::assertSame([255, 0, 128], SrgbConverter::toRgbChannels('hsl', [330.0, 100.0, 50.0]));
         // Achromatic: saturation 0 is grey at any hue.
         self::assertSame([128, 128, 128], SrgbConverter::toRgbChannels('hsl', [123.0, 0.0, 50.2]));
         self::assertSame([0, 0, 0], SrgbConverter::toRgbChannels('hsl', [0.0, 100.0, 0.0]));

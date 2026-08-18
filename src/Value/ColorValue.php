@@ -192,15 +192,10 @@ final readonly class ColorValue implements TokenValueInterface
         }
 
         // okhsv (and any space without a CSS representation): no CSS function
-        // exists, so fall back to the author-provided hex if present.
-        if ($this->hex !== null) {
-            return strtolower($this->hex);
-        }
-
-        throw TokenException::invalidValue(\sprintf(
-            'Color in space "%s" has no CSS serialization; provide a "hex" fallback.',
-            $this->colorSpace,
-        ));
+        // exists, so the author-provided hex is the serialization. Both named
+        // constructors require one for these spaces, so it cannot be null
+        // here — the guard states the invariant rather than handling a case.
+        return strtolower($this->hex ?? throw TokenException::invalidValue(\sprintf('Color in space "%s" has no CSS serialization; provide a "hex" fallback.', $this->colorSpace)));
     }
 
     public function toRgb(?float $alpha = null): string

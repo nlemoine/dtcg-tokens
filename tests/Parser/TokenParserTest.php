@@ -1443,6 +1443,23 @@ final class TokenParserTest extends TestCase
         self::assertSame('rgb(0 0 0)', (string) $value->forMode('2024'));
     }
 
+    public function testColorHexFallbackNotAStringThrows(): void
+    {
+        $this->expectException(TokenException::class);
+        $this->expectExceptionMessageIsOrContains('"hex" must be a string, got int.');
+
+        $this->parser->parse([
+            'c' => [
+                '$type' => 'color',
+                '$value' => [
+                    'colorSpace' => 'okhsv',
+                    'channels' => [0.5, 0.5, 0.5],
+                    'hex' => 16711680,
+                ],
+            ],
+        ]);
+    }
+
     public function testColorSpaceNotAStringThrows(): void
     {
         $this->expectException(TokenException::class);
