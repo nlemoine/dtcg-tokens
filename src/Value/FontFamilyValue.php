@@ -4,8 +4,12 @@ declare(strict_types=1);
 
 namespace n5s\DtcgTokens\Value;
 
+use n5s\DtcgTokens\Exception\TokenException;
+
 final readonly class FontFamilyValue implements TokenValueInterface
 {
+    use ResolvesModes;
+
     /**
      * @internal
      *
@@ -16,6 +20,16 @@ final readonly class FontFamilyValue implements TokenValueInterface
         private array $families,
         private ?array $modes = null,
     ) {
+        if ($families === []) {
+            // An empty list would render "--x: ;" - invalid CSS.
+            throw TokenException::invalidValue('FontFamily must contain at least one family.');
+        }
+
+        foreach ($families as $family) {
+            if ($family === '') {
+                throw TokenException::invalidValue('FontFamily entries must not be empty.');
+            }
+        }
     }
 
     public function __toString(): string
@@ -34,11 +48,6 @@ final readonly class FontFamilyValue implements TokenValueInterface
     public function families(): array
     {
         return $this->families;
-    }
-
-    public function forMode(string $mode): static
-    {
-        return $this->modes[$mode] ?? $this;
     }
 
     /**

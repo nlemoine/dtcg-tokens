@@ -103,7 +103,7 @@ final class TokenParser
                 }
 
                 $tokens[$path] = $this->buildValue($entry['type'], $base, $modeValues);
-                $metadata[$path] = new TokenMetadata($entry['description'], $entry['deprecated'], $modeSet);
+                $metadata[$path] = new TokenMetadata($entry['description'], $entry['deprecated'], $modeSet, $entry['type']);
             } catch (TokenException $exception) {
                 // On a large file, a type-scoped message without the token
                 // path is close to useless.
@@ -380,20 +380,11 @@ final class TokenParser
         $modeMap = $this->buildModeMap($modes, fn (mixed $v): FontFamilyValue => $this->buildFontFamily($v));
 
         if (\is_string($value)) {
-            if ($value === '') {
-                throw TokenException::invalidValue('FontFamily token value must not be empty.');
-            }
-
             return new FontFamilyValue([$value], $modeMap);
         }
 
         if (! \is_array($value)) {
             throw TokenException::invalidValue('FontFamily token value must be a string or array of strings.');
-        }
-
-        if ($value === []) {
-            // An empty list would render "--x: ;" — invalid CSS.
-            throw TokenException::invalidValue('FontFamily token value must contain at least one family.');
         }
 
         /** @var list<string> $families */
@@ -660,16 +651,6 @@ final class TokenParser
             ];
         }
 
-        // Checked after the per-stop validation so a malformed single stop
-        // reports its own defect first. CSS needs two stops to interpolate;
-        // "linear-gradient()" and "linear-gradient(red 0%)" are both invalid.
-        if (\count($stops) < 2) {
-            throw TokenException::invalidValue(\sprintf(
-                'Gradient token value must contain at least two color stops, got %d.',
-                \count($stops),
-            ));
-        }
-
         return new GradientValue($stops, $modeMap);
     }
 
@@ -809,11 +790,6 @@ final class TokenParser
     {
         if (! \is_array($value)) {
             throw TokenException::invalidValue('Shadow token value must be an object or array of objects.');
-        }
-
-        if ($value === []) {
-            // Zero layers would render "--x: ;" — invalid CSS.
-            throw TokenException::invalidValue('Shadow token value must contain at least one layer.');
         }
 
         $modeShadows = $this->buildModeMap($modes, fn (mixed $v): ShadowValue => $this->buildShadow($v));

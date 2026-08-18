@@ -6,6 +6,8 @@ namespace n5s\DtcgTokens\Value;
 
 final readonly class BorderValue implements TokenValueInterface
 {
+    use ResolvesModes;
+
     /**
      * @internal
      *
@@ -42,10 +44,5 @@ final readonly class BorderValue implements TokenValueInterface
     public function style(): StrokeStyleValue
     {
         return $this->style;
-    }
-
-    public function forMode(string $mode): static
-    {
-        return $this->modes[$mode] ?? $this;
     }
 }

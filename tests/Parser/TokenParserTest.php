@@ -273,6 +273,36 @@ final class TokenParserTest extends TestCase
         ]);
     }
 
+    public function testFontWeightAcceptsBothRangeBoundaries(): void
+    {
+        $result = $this->parser->parse([
+            'thin' => [
+                '$type' => 'fontWeight',
+                '$value' => 1,
+            ],
+            'max' => [
+                '$type' => 'fontWeight',
+                '$value' => 1000,
+            ],
+        ]);
+
+        self::assertSame('1', (string) $result->values['thin']);
+        self::assertSame('1000', (string) $result->values['max']);
+    }
+
+    public function testFontWeightZeroThrows(): void
+    {
+        $this->expectException(TokenException::class);
+        $this->expectExceptionMessageIsOrContains('between 1 and 1000');
+
+        $this->parser->parse([
+            'w' => [
+                '$type' => 'fontWeight',
+                '$value' => 0,
+            ],
+        ]);
+    }
+
     public function testFontWeightOutOfRangeThrows(): void
     {
         $this->expectException(TokenException::class);
@@ -1689,6 +1719,56 @@ final class TokenParserTest extends TestCase
                         'position' => 0,
                     ],
                 ],
+            ],
+        ]);
+    }
+
+    public function testBrokenAliasInANumericPathThrowsTokenException(): void
+    {
+        // The chain is keyed by path, and PHP canonicalizes "100" to an int
+        // key: the diagnostic path must be cast back, not TypeError out of
+        // the documented catch (TokenException) contract.
+        $this->expectException(TokenException::class);
+        $this->expectExceptionMessageIsOrContains('in token "100"');
+
+        $this->parser->parse([
+            '100' => [
+                '$type' => 'number',
+                '$value' => '{missing}',
+            ],
+        ]);
+    }
+
+    public function testBrokenAliasReachedThroughANumericPathThrowsTokenException(): void
+    {
+        $this->expectException(TokenException::class);
+        $this->expectExceptionMessageIsOrContains('in token "100"');
+
+        $this->parser->parse([
+            'a' => [
+                '$type' => 'number',
+                '$value' => '{100}',
+            ],
+            '100' => [
+                '$type' => 'number',
+                '$value' => '{missing}',
+            ],
+        ]);
+    }
+
+    public function testCircularAliasThroughANumericPathThrowsTokenException(): void
+    {
+        $this->expectException(TokenException::class);
+        $this->expectExceptionMessageIsOrContains('Circular alias detected');
+
+        $this->parser->parse([
+            '100' => [
+                '$type' => 'number',
+                '$value' => '{200}',
+            ],
+            '200' => [
+                '$type' => 'number',
+                '$value' => '{100}',
             ],
         ]);
     }

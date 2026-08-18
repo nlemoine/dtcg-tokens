@@ -6,6 +6,8 @@ namespace n5s\DtcgTokens\Value;
 
 final readonly class TransitionValue implements TokenValueInterface
 {
+    use ResolvesModes;
+
     /**
      * @internal
      *
@@ -51,10 +53,5 @@ final readonly class TransitionValue implements TokenValueInterface
     public function timingFunction(): CubicBezierValue
     {
         return $this->timingFunction;
-    }
-
-    public function forMode(string $mode): static
-    {
-        return $this->modes[$mode] ?? $this;
     }
 }

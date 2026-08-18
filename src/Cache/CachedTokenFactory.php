@@ -22,15 +22,15 @@ final class CachedTokenFactory
      * pools that survive deploys (Redis, APCu) then miss instead of
      * unserializing stale objects into the new classes.
      */
-    private const string CACHE_VERSION = 'v2';
+    private const string CACHE_VERSION = 'v3';
 
     private ?Tokens $tokens = null;
 
     /**
-     * Source mtime the in-process memo was built from; lets debug mode drop
-     * the memo when sources change under a long-running worker.
+     * Source revision the in-process memo was built from; lets debug mode
+     * drop the memo when sources change under a long-running worker.
      */
-    private ?int $tokensMtime = null;
+    private ?string $tokensRevision = null;
 
     /**
      * Whether the last create() that reached the write path stored its result.
@@ -70,19 +70,19 @@ final class CachedTokenFactory
         if ($this->tokens !== null) {
             // In debug, the in-process memo must not outlive a source edit —
             // long-running workers (FrankenPHP, RoadRunner) would otherwise
-            // never see changes after the first call. An UNKNOWN mtime (0,
-            // per the loader contract) is treated as always stale: 0 === 0
-            // is not evidence of freshness.
-            if (! $this->debug || ($this->tokensMtime !== 0 && $this->tokensMtime === $this->loader->maxMtime())) {
+            // never see changes after the first call. An UNKNOWN revision
+            // (null, per the loader contract) is treated as always stale.
+            if (! $this->debug || ($this->tokensRevision !== null && $this->tokensRevision === $this->loader->revision())) {
                 return $this->tokens;
             }
 
             $this->tokens = null;
         }
 
-        // Stat sources only when the freshness check needs them: the
-        // production hit path must serve the pool entry without touching disk.
-        $maxMtime = $this->debug ? $this->loader->maxMtime() : null;
+        // Read the source revision only when the freshness check needs it:
+        // the production hit path must serve the pool entry without touching
+        // the source backend at all.
+        $revision = $this->debug ? $this->loader->revision() : null;
 
         $item = null;
         if ($this->cache !== null) {
@@ -91,8 +91,11 @@ final class CachedTokenFactory
             } catch (\Throwable) {
                 // The pool is an optimization, not a dependency: an
                 // unreachable backend must not take token resolution down
-                // with it. Without an item there is nothing to write either.
+                // with it. Without an item there is nothing to write either —
+                // but that is a FAILED write, not an unattempted one, or an
+                // unreachable pool would be indistinguishable from no pool.
                 $item = null;
+                $this->cacheWritten = false;
             }
         }
 
@@ -106,9 +109,9 @@ final class CachedTokenFactory
                     // poisoned entry cannot survive.
                     if (
                         $this->isValidPayload($cached)
-                        && (! $this->debug || ($maxMtime !== 0 && $cached['mtime'] === $maxMtime))
+                        && (! $this->debug || ($revision !== null && $cached['revision'] === $revision))
                     ) {
-                        $this->tokensMtime = $cached['mtime'];
+                        $this->tokensRevision = $cached['revision'];
 
                         return $this->tokens = new Tokens($cached['values'], $cached['metadata']);
                     }
@@ -119,14 +122,14 @@ final class CachedTokenFactory
             }
         }
 
-        $maxMtime ??= $this->loader->maxMtime();
+        $revision ??= $this->loader->revision();
         $this->tokens = Tokens::fromArray($this->loader->load(), $this->parser);
-        $this->tokensMtime = $maxMtime;
+        $this->tokensRevision = $revision;
 
         if ($item !== null) {
             try {
                 $item->set([
-                    'mtime' => $maxMtime,
+                    'revision' => $revision,
                     'values' => $this->tokens->all(),
                     'metadata' => $this->tokens->allMetadata(),
                 ]);
@@ -162,15 +165,18 @@ final class CachedTokenFactory
     }
 
     /**
-     * Runtime shape check for a cached payload — entries are only trusted
-     * after they prove they were written by self::create().
+     * Runtime shape check for a cached payload. This is a robustness guard
+     * against corrupted, truncated or foreign entries — NOT a security
+     * boundary: by the time it runs, $item->get() has already unserialized
+     * the graph. The pool itself must be trusted (see SECURITY.md).
      *
-     * @phpstan-assert-if-true array{mtime: int, values: array<string, TokenValueInterface>, metadata: array<string, TokenMetadata>} $cached
+     * @phpstan-assert-if-true array{revision: ?string, values: array<string, TokenValueInterface>, metadata: array<string, TokenMetadata>} $cached
      */
     private function isValidPayload(mixed $cached): bool
     {
         return \is_array($cached)
-            && \array_key_exists('mtime', $cached) && \is_int($cached['mtime'])
+            && \array_key_exists('revision', $cached)
+            && ($cached['revision'] === null || \is_string($cached['revision']))
             && \array_key_exists('values', $cached) && \is_array($cached['values'])
             && \array_key_exists('metadata', $cached) && \is_array($cached['metadata'])
             // Paths are array keys, so a numeric one ("4") arrives as an int.

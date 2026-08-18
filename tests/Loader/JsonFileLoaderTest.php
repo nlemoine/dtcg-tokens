@@ -177,6 +177,22 @@ final class JsonFileLoaderTest extends TestCase
         self::assertNotSame('', $loader->fingerprint());
     }
 
+    public function testRevisionIsAStringForReadableSources(): void
+    {
+        $loader = new JsonFileLoader(self::BASE);
+
+        $revision = $loader->revision();
+
+        self::assertNotNull($revision);
+        self::assertSame((string) $loader->maxMtime(), $revision);
+    }
+
+    public function testRevisionIsNullWhenNoSourceIsReadable(): void
+    {
+        // null = unknown = always stale for the debug freshness check.
+        self::assertNull(new JsonFileLoader()->revision());
+    }
+
     public function testMaxMtimeIsPositive(): void
     {
         $loader = new JsonFileLoader(self::BASE, self::OVERRIDES);

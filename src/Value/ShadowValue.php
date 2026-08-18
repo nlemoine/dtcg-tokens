@@ -4,8 +4,12 @@ declare(strict_types=1);
 
 namespace n5s\DtcgTokens\Value;
 
+use n5s\DtcgTokens\Exception\TokenException;
+
 final readonly class ShadowValue implements TokenValueInterface
 {
+    use ResolvesModes;
+
     /**
      * @internal
      *
@@ -16,6 +20,10 @@ final readonly class ShadowValue implements TokenValueInterface
         private array $layers,
         private ?array $modes = null,
     ) {
+        if ($layers === []) {
+            // Zero layers would render "--x: ;" - invalid CSS.
+            throw TokenException::invalidValue('Shadow must contain at least one layer.');
+        }
     }
 
     public function __toString(): string
@@ -34,11 +42,6 @@ final readonly class ShadowValue implements TokenValueInterface
     public function layers(): array
     {
         return $this->layers;
-    }
-
-    public function forMode(string $mode): static
-    {
-        return $this->modes[$mode] ?? $this;
     }
 
     /**

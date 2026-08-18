@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace n5s\DtcgTokens\Value;
 
+use n5s\DtcgTokens\Exception\TokenException;
 use n5s\DtcgTokens\Internal\Number;
+use n5s\DtcgTokens\Internal\Str;
 
 /**
  * A value with a CSS unit. Carries both DTCG `dimension` tokens (px/rem/em)
@@ -14,6 +16,16 @@ use n5s\DtcgTokens\Internal\Number;
  */
 final readonly class DimensionValue implements TokenValueInterface
 {
+    use ResolvesModes;
+
+    /**
+     * Every unit either token type can carry (dimension: px/rem/em,
+     * duration: ms/s). The parser narrows further per token type.
+     *
+     * @var list<string>
+     */
+    private const array UNITS = ['px', 'rem', 'em', 'ms', 's'];
+
     /**
      * @internal
      *
@@ -24,6 +36,17 @@ final readonly class DimensionValue implements TokenValueInterface
         private string $unit,
         private ?array $modes = null,
     ) {
+        if (! \in_array($unit, self::UNITS, true)) {
+            throw TokenException::invalidValue(\sprintf(
+                'Invalid dimension unit "%s"; expected one of %s.',
+                Str::excerpt($unit),
+                implode(', ', self::UNITS),
+            ));
+        }
+
+        if (! is_finite($value)) {
+            throw TokenException::invalidValue('Dimension value must be a finite number.');
+        }
     }
 
     public function __toString(): string
@@ -45,10 +68,5 @@ final readonly class DimensionValue implements TokenValueInterface
     public function unit(): string
     {
         return $this->unit;
-    }
-
-    public function forMode(string $mode): static
-    {
-        return $this->modes[$mode] ?? $this;
     }
 }

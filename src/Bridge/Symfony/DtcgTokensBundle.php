@@ -32,6 +32,11 @@ final class DtcgTokensBundle extends AbstractBundle
             ->scalarNode('cache')
             ->defaultNull()
             ->end()
+            ->integerNode('ttl')
+            ->defaultNull()
+            ->min(1)
+            ->info('Lifetime in seconds for cached tokens; set one when the pool survives deploys (Redis, APCu).')
+            ->end()
             ->end();
     }
 
@@ -53,6 +58,9 @@ final class DtcgTokensBundle extends AbstractBundle
         $rawCache = $config['cache'] ?? null;
         $cache = \is_string($rawCache) ? $rawCache : null;
 
+        $rawTtl = $config['ttl'] ?? null;
+        $ttl = \is_int($rawTtl) ? $rawTtl : null;
+
         $debug = (bool) $builder->getParameter('kernel.debug');
 
         $services = $container->services();
@@ -69,6 +77,7 @@ final class DtcgTokensBundle extends AbstractBundle
                 $cache !== null ? service($cache) : null,
                 $debug,
                 service(TokenParser::class),
+                $ttl,
             ]);
 
         $services->set(Tokens::class)

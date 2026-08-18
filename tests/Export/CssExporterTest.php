@@ -206,6 +206,21 @@ final class CssExporterTest extends TestCase
         self::assertStringContainsString('cubic-bezier(0.25, 0.1, 0.25, 1)', $css);
     }
 
+    public function testPathWithTrailingNewlineIsRejected(): void
+    {
+        // Without the D modifier, $ would match before the trailing newline
+        // and let the name through.
+        $tokens = new Tokens([
+            "bad\n" => ColorValue::fromHex('#ff0000'),
+        ]);
+
+        $this->expectException(TokenException::class);
+        $this->expectExceptionMessageIsOrContains('cannot be exported as a CSS custom property name');
+
+        new CssExporter()
+            ->export($tokens);
+    }
+
     public function testNonAsciiTokenPathExports(): void
     {
         // CSS custom property names allow non-ASCII identifiers.

@@ -70,6 +70,17 @@ final readonly class JsonFileLoader implements CacheableTokenLoaderInterface
         return $merged;
     }
 
+    public function revision(): ?string
+    {
+        $mtime = $this->maxMtime();
+
+        return $mtime === 0 ? null : (string) $mtime;
+    }
+
+    /**
+     * The most recent modification time across the source files, or 0 when
+     * none is readable. {@see self::revision()} is the interface-level form.
+     */
     public function maxMtime(): int
     {
         $max = 0;

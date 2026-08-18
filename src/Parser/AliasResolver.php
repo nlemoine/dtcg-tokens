@@ -87,7 +87,7 @@ final class AliasResolver
     private function resolveInMode(string $path, ?string $mode, array $chain): mixed
     {
         if (isset($chain[$path])) {
-            throw TokenException::circularAlias($path, array_keys($chain));
+            throw TokenException::circularAlias($path, array_map(strval(...), array_keys($chain)));
         }
 
         if (\count($chain) >= self::MAX_CHAIN_DEPTH) {
@@ -147,7 +147,10 @@ final class AliasResolver
             if (! isset($this->entries[$aliasPath])) {
                 // The chain is insertion-ordered from the walk root; the token
                 // actually holding the broken alias is the LAST one entered.
-                throw TokenException::brokenAlias($value, array_key_last($chain) ?? $aliasPath);
+                // Cast: PHP canonicalizes a numeric path key ("100") to int.
+                $holder = array_key_last($chain);
+
+                throw TokenException::brokenAlias($value, $holder === null ? $aliasPath : (string) $holder);
             }
 
             return $this->resolveInMode($aliasPath, $mode, $chain);
@@ -168,7 +171,7 @@ final class AliasResolver
             // (throwing on any alias cycle) before mode hoisting runs.
             // Throwing keeps the memo free of cycle-truncated results should
             // that ordering change.
-            throw TokenException::circularAlias($path, array_keys($visiting));
+            throw TokenException::circularAlias($path, array_map(strval(...), array_keys($visiting)));
         }
 
         if (isset($this->modesMemo[$path])) {

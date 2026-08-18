@@ -39,6 +39,44 @@ final class ColorValueTest extends TestCase
         self::assertSame('#ff0000', ColorValue::fromHex('#FF0000')->toHex());
     }
 
+    public function testFromHexDerivesExactComponentsAndAlpha(): void
+    {
+        // Serialization is hex-first, so the derived components are only
+        // observable here — but they ARE the stored lossless value.
+        $color = ColorValue::fromHex('#80402080');
+
+        self::assertSame([128 / 255, 64 / 255, 32 / 255], $color->components());
+        self::assertSame(128 / 255, $color->alpha());
+    }
+
+    public function testOklchLightnessIsClampedAtBothBoundsForConversion(): void
+    {
+        // Out-of-range L clamps to the bound; in-range L must NOT be clamped.
+        self::assertSame(
+            ColorValue::fromComponents('oklch', [1.0, 0.0, 0.0], 1.0)->toHex(),
+            ColorValue::fromComponents('oklch', [1.5, 0.0, 0.0], 1.0)->toHex(),
+        );
+        self::assertSame(
+            ColorValue::fromComponents('oklch', [0.0, 0.0, 0.0], 1.0)->toHex(),
+            ColorValue::fromComponents('oklch', [-0.5, 0.0, 0.0], 1.0)->toHex(),
+        );
+        self::assertNotSame(
+            ColorValue::fromComponents('oklch', [0.7, 0.1, 30.0], 1.0)->toHex(),
+            ColorValue::fromComponents('oklch', [1.0, 0.1, 30.0], 1.0)->toHex(),
+        );
+    }
+
+    public function testHexToleranceBoundaryIsExactlyOneStep(): void
+    {
+        // One 8-bit step off is a rounding difference between tools: accepted.
+        $offByOne = ColorValue::fromComponents('srgb', [1.0, 0.0, 0.0], 1.0, '#fe0000');
+        self::assertSame('#fe0000', $offByOne->toHex());
+
+        // Two steps is a different color: rejected.
+        $this->expectException(TokenException::class);
+        ColorValue::fromComponents('srgb', [1.0, 0.0, 0.0], 1.0, '#fd0000');
+    }
+
     public function testSrgbFromComponents(): void
     {
         $color = ColorValue::fromComponents('srgb', [1.0, 0.0, 0.0], 1.0);
@@ -344,6 +382,61 @@ final class ColorValueTest extends TestCase
         $light = ColorValue::fromHex('#ffffff');
 
         self::assertSame($light, $light->forMode('dark'));
+    }
+
+    public function testMissedModeLookupIsModeTerminal(): void
+    {
+        // Falling back to the base value must not keep the sibling map alive:
+        // a later forMode() on the result would resurrect other modes.
+        $dark = ColorValue::fromHex('#000000');
+        $light = ColorValue::fromHex('#ffffff', [
+            'dark' => $dark,
+        ]);
+
+        $fallback = $light->forMode('does-not-exist');
+
+        self::assertSame('rgb(255 255 255)', (string) $fallback);
+        self::assertSame($fallback, $fallback->forMode('dark'));
+    }
+
+    public function testContradictoryHexFallbackOnSrgbThrows(): void
+    {
+        // For srgb the components ARE the sRGB channels: a hex naming a
+        // different color would make toCss() and toHex() emit two colors.
+        $this->expectException(TokenException::class);
+        $this->expectExceptionMessageIsOrContains('contradicts its components');
+
+        ColorValue::fromComponents('srgb', [1.0, 0.0, 0.0], 1.0, '#00ff00');
+    }
+
+    public function testMatchingHexFallbackOnSrgbIsAccepted(): void
+    {
+        $color = ColorValue::fromComponents('srgb', [1.0, 0.0, 0.0], 1.0, '#ff0000');
+
+        self::assertSame('#ff0000', $color->toHex());
+        self::assertSame('rgb(255 0 0)', $color->toRgb());
+        self::assertSame('rgb(255 0 0)', $color->toCss());
+    }
+
+    public function testContradictoryHexAlphaOnSrgbThrows(): void
+    {
+        $this->expectException(TokenException::class);
+        $this->expectExceptionMessageIsOrContains('contradicts');
+
+        ColorValue::fromComponents('srgb', [1.0, 0.0, 0.0], 1.0, '#ff000080');
+    }
+
+    public function testHexFallbackDrivesAllSrgbReductionsForNonIdentitySpaces(): void
+    {
+        // For hsl/oklch the hex is the author's chosen sRGB approximation
+        // (DTCG's stated purpose for it): every sRGB reduction must use it,
+        // so toHex() and toRgb() can never disagree.
+        $color = ColorValue::fromComponents('hsl', [210.0, 100.0, 50.0], 1.0, '#0081fe');
+
+        self::assertSame('#0081fe', $color->toHex());
+        self::assertSame('rgb(0 129 254)', $color->toRgb());
+        // Native hsl() serialization is untouched by the fallback.
+        self::assertSame('hsl(210 100% 50%)', $color->toCss());
     }
 
     public function testSrgbComponentsWithAlphaToHexEmitsEightDigitForm(): void

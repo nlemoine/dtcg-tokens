@@ -208,6 +208,44 @@ final class TokensTest extends TestCase
         self::assertNotNull($dark->metadata('color.fg'));
     }
 
+    public function testProjectionDoesNotLeakUndeclaredModes(): void
+    {
+        // A token that does NOT declare the projected mode falls back to its
+        // base value — but that fallback must be mode-terminal too, or a
+        // second projection emits a MIX of themes across the collection.
+        $tokens = Tokens::fromArray([
+            'color' => [
+                '$type' => 'color',
+                'fg' => [
+                    '$value' => '#ffffff',
+                    '$extensions' => [
+                        'mode' => [
+                            'dark' => '#000000',
+                        ],
+                    ],
+                ],
+                'accent' => [
+                    '$value' => '#ff0000',
+                    '$extensions' => [
+                        'mode' => [
+                            'hc' => '#00ff00',
+                        ],
+                    ],
+                ],
+            ],
+        ]);
+
+        $dark = $tokens->forMode('dark');
+
+        // accent kept its base in the dark projection; asking the projection
+        // for hc must NOT resurrect the hc sibling.
+        self::assertSame('rgb(255 0 0)', (string) $dark->get('color.accent'));
+        self::assertSame('rgb(255 0 0)', (string) $dark->get('color.accent', 'hc'));
+        self::assertSame('rgb(255 0 0)', (string) $dark->forMode('hc')->get('color.accent'));
+        // The source collection still resolves hc normally.
+        self::assertSame('rgb(0 255 0)', (string) $tokens->get('color.accent', 'hc'));
+    }
+
     public function testProjectedCollectionNoLongerAdvertisesModes(): void
     {
         // Mode-bound values carry no sibling map, so a projection cannot
@@ -331,6 +369,39 @@ final class TokensTest extends TestCase
         self::assertNotNull($metadata);
         self::assertSame('Legacy brand color', $metadata->description);
         self::assertTrue($metadata->deprecated);
+    }
+
+    public function testMetadataCarriesTheDtcgType(): void
+    {
+        // duration/dimension share DimensionValue and fontWeight/number share
+        // NumberValue: the authored $type on the metadata is how a consumer
+        // tells them apart.
+        $tokens = Tokens::fromArray([
+            'fast' => [
+                '$type' => 'duration',
+                '$value' => [
+                    'value' => 200,
+                    'unit' => 'ms',
+                ],
+            ],
+            'gap' => [
+                '$type' => 'dimension',
+                '$value' => [
+                    'value' => 16,
+                    'unit' => 'px',
+                ],
+            ],
+            'weight' => [
+                '$type' => 'fontWeight',
+                '$value' => 'bold',
+            ],
+        ]);
+
+        self::assertSame('duration', $tokens->metadata('fast')?->type);
+        self::assertSame('dimension', $tokens->metadata('gap')?->type);
+        self::assertSame('fontWeight', $tokens->metadata('weight')?->type);
+        // Projections keep it.
+        self::assertSame('duration', $tokens->forMode('any')->metadata('fast')?->type);
     }
 
     public function testMetadataIsNullForUnknownPath(): void

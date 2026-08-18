@@ -14,7 +14,9 @@ final class SrgbConverterTest extends TestCase
 {
     public function testSrgbChannelsScaleToEightBit(): void
     {
-        self::assertSame([255, 0, 128], SrgbConverter::toRgbChannels('srgb', [1.0, 0.0, 0.502]));
+        // Three distinct non-zero channels: a scaling error on any single
+        // channel is visible.
+        self::assertSame([255, 128, 64], SrgbConverter::toRgbChannels('srgb', [1.0, 0.502, 0.251]));
     }
 
     public function testFractionalHslComponentsAreNotRoundedAway(): void

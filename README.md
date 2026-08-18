@@ -242,6 +242,7 @@ dtcg_tokens:
     files:
         - '%kernel.project_dir%/assets/tokens/tokens.json'
     cache: cache.app   # optional PSR-6 pool service id
+    ttl: 86400         # optional, seconds; recommended when the pool survives deploys
 ```
 
 `files` is required (at least one entry); multiple files are merged in order. `cache` is optional — point it at any PSR-6 cache pool service to cache the parsed token tree.
@@ -310,7 +311,7 @@ With `debug: false` the pool entry is served without any freshness check, so a p
 
 Without a cache pool it simply parses on first `create()` and reuses the result in-process. The Symfony bundle wires this factory for you.
 
-The factory accepts any `CacheableTokenLoaderInterface` — a `TokenLoaderInterface` extended with `maxMtime()` and `fingerprint()` — so a custom loader (HTTP, database, …) keeps caching support. `JsonFileLoader` implements it. Cache keys carry a format version segment, so entries written by an older release miss instead of unserializing into changed value-object classes.
+The factory accepts any `CacheableTokenLoaderInterface` — a `TokenLoaderInterface` extended with `revision()` (an opaque freshness marker: an mtime, an ETag, a content hash; `null` = unknown = always stale in debug) and `fingerprint()` — so a custom loader (HTTP, database, …) keeps caching support. `JsonFileLoader` implements it. Cache keys carry a format version segment, so entries written by an older release miss instead of unserializing into changed value-object classes.
 
 ## Development
 

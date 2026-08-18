@@ -48,6 +48,13 @@ final class StrTest extends TestCase
         self::assertLessThanOrEqual(200, \strlen($excerpt));
     }
 
+    public function testDegenerateAllContinuationInputTruncatesToTheSuffixOnly(): void
+    {
+        // Invalid UTF-8 made only of continuation bytes: the walk-back must
+        // stop at offset 0, not underflow into a negative substr() length.
+        self::assertSame('… (200 bytes total)', Str::excerpt(str_repeat("\x80", 200)));
+    }
+
     public function testTruncationOnAnAlignedBoundaryKeepsTheWholeCharacter(): void
     {
         // 2-byte characters divide the limit exactly: nothing to walk back.

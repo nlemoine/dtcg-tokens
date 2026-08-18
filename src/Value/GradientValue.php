@@ -4,10 +4,13 @@ declare(strict_types=1);
 
 namespace n5s\DtcgTokens\Value;
 
+use n5s\DtcgTokens\Exception\TokenException;
 use n5s\DtcgTokens\Internal\Number;
 
 final readonly class GradientValue implements TokenValueInterface
 {
+    use ResolvesModes;
+
     /**
      * @internal
      *
@@ -18,6 +21,23 @@ final readonly class GradientValue implements TokenValueInterface
         private array $stops,
         private ?array $modes = null,
     ) {
+        // CSS needs two stops to interpolate: "linear-gradient()" and
+        // "linear-gradient(red 0%)" are both invalid.
+        if (\count($stops) < 2) {
+            throw TokenException::invalidValue(\sprintf(
+                'Gradient must contain at least two color stops, got %d.',
+                \count($stops),
+            ));
+        }
+
+        foreach ($stops as $stop) {
+            if ($stop['position'] < 0.0 || $stop['position'] > 1.0) {
+                throw TokenException::invalidValue(\sprintf(
+                    'Gradient stop position must be a number in [0, 1], got %s.',
+                    Number::format($stop['position']),
+                ));
+            }
+        }
     }
 
     public function __toString(): string
@@ -41,10 +61,5 @@ final readonly class GradientValue implements TokenValueInterface
     public function stops(): array
     {
         return $this->stops;
-    }
-
-    public function forMode(string $mode): static
-    {
-        return $this->modes[$mode] ?? $this;
     }
 }
