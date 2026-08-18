@@ -16,10 +16,13 @@ final class FlakyPool implements CacheItemPoolInterface
 {
     private readonly CacheItemPoolInterface $inner;
 
+    public ?UnreadableItem $lastUnreadableItem = null;
+
     public function __construct(
         public bool $throwOnGetItem = false,
         public bool $throwOnSave = false,
         public bool $failSave = false,
+        public bool $unreadablePayload = false,
     ) {
         $this->inner = new ArrayAdapter();
     }
@@ -28,6 +31,10 @@ final class FlakyPool implements CacheItemPoolInterface
     {
         if ($this->throwOnGetItem) {
             throw new \RuntimeException('pool backend unreachable');
+        }
+
+        if ($this->unreadablePayload) {
+            return $this->lastUnreadableItem = new UnreadableItem($key);
         }
 
         return $this->inner->getItem($key);
@@ -76,6 +83,11 @@ final class FlakyPool implements CacheItemPoolInterface
             // PSR-6 allows reporting failure by return value alone (an
             // oversized payload, a full backend).
             return false;
+        }
+
+        if ($item instanceof UnreadableItem) {
+            // The inner adapter only accepts its own item class.
+            return true;
         }
 
         return $this->inner->save($item);

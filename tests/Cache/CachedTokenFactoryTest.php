@@ -496,6 +496,19 @@ final class CachedTokenFactoryTest extends TestCase
         self::assertSame(0, $fresh->loadCalls);
     }
 
+    public function testUnreadablePayloadIsTreatedAsMissAndOverwritten(): void
+    {
+        // The backend reports a hit but the payload cannot be unserialized
+        // (truncated write, class gone). That must degrade to a fresh parse
+        // AND replace the entry, or every request pays for it forever.
+        $pool = new FlakyPool(unreadablePayload: true);
+        $factory = new CachedTokenFactory($this->countingLoader(), $pool);
+
+        self::assertSame('rgb(255 0 0)', (string) $factory->create()->get('color.primary'));
+        self::assertTrue($factory->cacheWritten());
+        self::assertIsArray($pool->lastUnreadableItem?->written);
+    }
+
     public function testCorruptedPayloadIsTreatedAsMissAndOverwritten(): void
     {
         // A truncated write, a foreign entry under our key, or an
