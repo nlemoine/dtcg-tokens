@@ -1,0 +1,14 @@
+coverage:
+  status:
+    project:
+      default:
+        # Fail only on a real regression, not on rounding noise.
+        threshold: 0.5%
+    patch:
+      default:
+        # A hardening diff legitimately carries a handful of untestable
+        # defensive guards (environment-dependent branches, TOCTOU race
+        # windows, documented-unreachable invariant guards). Requiring the
+        # patch to beat the project average makes every such line a fight.
+        target: 99%
+        threshold: 0.5%
