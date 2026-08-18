@@ -38,11 +38,22 @@ final class StrTest extends TestCase
     public function testTruncationKeepsValidUtf8(): void
     {
         // A byte-level cut through a multi-byte sequence makes the message
-        // unencodable: JSON log formatters drop the whole record.
-        $excerpt = Str::excerpt(str_repeat('é', 200));
+        // unencodable: JSON log formatters drop the whole record. One ASCII
+        // byte then 3-byte characters puts the 120-byte limit inside a
+        // sequence, which an aligned string would never exercise.
+        $excerpt = Str::excerpt('a' . str_repeat('€', 200));
 
         self::assertTrue(mb_check_encoding($excerpt, 'UTF-8'));
         self::assertNotFalse(json_encode($excerpt));
         self::assertLessThanOrEqual(200, \strlen($excerpt));
+    }
+
+    public function testTruncationOnAnAlignedBoundaryKeepsTheWholeCharacter(): void
+    {
+        // 2-byte characters divide the limit exactly: nothing to walk back.
+        $excerpt = Str::excerpt(str_repeat('é', 200));
+
+        self::assertTrue(mb_check_encoding($excerpt, 'UTF-8'));
+        self::assertStringStartsWith(str_repeat('é', 60), $excerpt);
     }
 }
