@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace n5s\DtcgTokens\Internal;
 
 use n5s\DtcgTokens\Exception\TokenException;
-use OzdemirBurak\Iris\Color\Hsl;
 use OzdemirBurak\Iris\Color\Oklch;
 use OzdemirBurak\Iris\Exceptions\InvalidColorException;
 
@@ -45,25 +44,26 @@ final class SrgbConverter
             ));
         }
 
+        if ($colorSpace === 'hsl') {
+            // Converted here rather than through the vendor: its HSL parser
+            // only accepts integer components, which would quantize the
+            // authored color (50.4% lightness becoming 50%) long before the
+            // 8-bit channels are computed.
+            return self::hslToRgbChannels(
+                self::normalizeHue($channels[0]),
+                self::clamp($channels[1], 0.0, 100.0) / 100,
+                self::clamp($channels[2], 0.0, 100.0) / 100,
+            );
+        }
+
         try {
-            if ($colorSpace === 'hsl') {
-                // DTCG spec ranges: H 0-360, S/L 0-100. Iris only parses
-                // integer h,s,l.
-                $rgb = new Hsl(\sprintf(
-                    '%d,%d,%d',
-                    (int) round(self::normalizeHue($channels[0])),
-                    (int) round(self::clamp($channels[1], 0.0, 100.0)),
-                    (int) round(self::clamp($channels[2], 0.0, 100.0)),
-                ))->toRgb();
-            } else {
-                // oklch: L is 0..1 per spec; iris expects a 0..100 percentage.
-                $rgb = new Oklch(\sprintf(
-                    '%s,%s,%s',
-                    Number::format(self::clamp($channels[0], 0.0, 1.0) * 100),
-                    Number::format($channels[1]),
-                    Number::format(self::normalizeHue($channels[2])),
-                ))->toRgb();
-            }
+            // oklch: L is 0..1 per spec; iris expects a 0..100 percentage.
+            $rgb = new Oklch(\sprintf(
+                '%s,%s,%s',
+                Number::format(self::clamp($channels[0], 0.0, 1.0) * 100),
+                Number::format($channels[1]),
+                Number::format(self::normalizeHue($channels[2])),
+            ))->toRgb();
         } catch (InvalidColorException $e) {
             throw TokenException::colorConversionFailed($colorSpace, $e);
         }
@@ -76,6 +76,38 @@ final class SrgbConverter
         $b = $rgb->blue();
 
         return [$r, $g, $b];
+    }
+
+    /**
+     * CSS Color 4 HSL-to-RGB, in floating point throughout.
+     *
+     * @param float $hue        wrapped into [0, 360)
+     * @param float $saturation 0..1
+     * @param float $lightness  0..1
+     *
+     * @return array{int, int, int}
+     */
+    private static function hslToRgbChannels(float $hue, float $saturation, float $lightness): array
+    {
+        $chroma = (1 - abs(2 * $lightness - 1)) * $saturation;
+        $sector = $hue / 60;
+        $second = $chroma * (1 - abs(fmod($sector, 2) - 1));
+        $lightest = $lightness - $chroma / 2;
+
+        [$red, $green, $blue] = match ((int) $sector) {
+            0 => [$chroma, $second, 0.0],
+            1 => [$second, $chroma, 0.0],
+            2 => [0.0, $chroma, $second],
+            3 => [0.0, $second, $chroma],
+            4 => [$second, 0.0, $chroma],
+            default => [$chroma, 0.0, $second],
+        };
+
+        return [
+            (int) round(($red + $lightest) * 255),
+            (int) round(($green + $lightest) * 255),
+            (int) round(($blue + $lightest) * 255),
+        ];
     }
 
     private static function clamp(float $value, float $min, float $max): float

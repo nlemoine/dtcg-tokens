@@ -20,7 +20,7 @@ final class TokenExtensionUnitTest extends TestCase
 
         // The library's exception contract: consumers catch TokenException.
         $this->expectException(TokenException::class);
-        $this->expectExceptionMessage(
+        $this->expectExceptionMessageIsOrContains(
             \sprintf('The "hex" filter can only be used on color tokens, got %s.', DimensionValue::class),
         );
 
@@ -32,7 +32,7 @@ final class TokenExtensionUnitTest extends TestCase
         $extension = new TokenExtension(new Tokens([]));
 
         $this->expectException(TokenException::class);
-        $this->expectExceptionMessage(
+        $this->expectExceptionMessageIsOrContains(
             \sprintf('The "rgb" filter can only be used on color tokens, got %s.', DimensionValue::class),
         );
 

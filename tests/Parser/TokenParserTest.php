@@ -71,7 +71,7 @@ final class TokenParserTest extends TestCase
     public function testCircularAliasThrows(): void
     {
         $this->expectException(TokenException::class);
-        $this->expectExceptionMessage('Circular alias detected');
+        $this->expectExceptionMessageIsOrContains('Circular alias detected');
 
         $this->parser->parse([
             'a' => [
@@ -88,7 +88,7 @@ final class TokenParserTest extends TestCase
     public function testBrokenAliasThrows(): void
     {
         $this->expectException(TokenException::class);
-        $this->expectExceptionMessage('could not be resolved');
+        $this->expectExceptionMessageIsOrContains('could not be resolved');
 
         $this->parser->parse([
             'a' => [
@@ -150,7 +150,7 @@ final class TokenParserTest extends TestCase
     public function testDurationInvalidUnitThrows(): void
     {
         $this->expectException(TokenException::class);
-        $this->expectExceptionMessage('unit');
+        $this->expectExceptionMessageIsOrContains('unit');
 
         $this->parser->parse([
             'bad' => [
@@ -181,7 +181,7 @@ final class TokenParserTest extends TestCase
     public function testDimensionInvalidUnitThrows(): void
     {
         $this->expectException(TokenException::class);
-        $this->expectExceptionMessage('unit');
+        $this->expectExceptionMessageIsOrContains('unit');
 
         $this->parser->parse([
             'bad' => [
@@ -263,7 +263,7 @@ final class TokenParserTest extends TestCase
     public function testFontWeightUnknownKeywordThrows(): void
     {
         $this->expectException(TokenException::class);
-        $this->expectExceptionMessage('unknown fontWeight keyword');
+        $this->expectExceptionMessageIsOrContains('unknown fontWeight keyword');
 
         $this->parser->parse([
             'w' => [
@@ -276,7 +276,7 @@ final class TokenParserTest extends TestCase
     public function testFontWeightOutOfRangeThrows(): void
     {
         $this->expectException(TokenException::class);
-        $this->expectExceptionMessage('must be an integer between 1 and 1000');
+        $this->expectExceptionMessageIsOrContains('must be an integer between 1 and 1000');
 
         $this->parser->parse([
             'w' => [
@@ -317,7 +317,7 @@ final class TokenParserTest extends TestCase
     public function testCubicBezierXOutOfRangeThrows(): void
     {
         $this->expectException(TokenException::class);
-        $this->expectExceptionMessage('x coordinate at index 0 must be in [0, 1]');
+        $this->expectExceptionMessageIsOrContains('x coordinate at index 0 must be in [0, 1]');
 
         $this->parser->parse([
             'ease' => [
@@ -342,7 +342,7 @@ final class TokenParserTest extends TestCase
     public function testGradientStopPositionOutOfRangeThrows(): void
     {
         $this->expectException(TokenException::class);
-        $this->expectExceptionMessage('Gradient stop position must be a number in [0, 1]');
+        $this->expectExceptionMessageIsOrContains('Gradient stop position must be a number in [0, 1]');
 
         $this->parser->parse([
             'g' => [
@@ -530,7 +530,7 @@ final class TokenParserTest extends TestCase
     public function testStrokeStyleKeywordTypoThrows(): void
     {
         $this->expectException(TokenException::class);
-        $this->expectExceptionMessage('Invalid strokeStyle keyword "soild"');
+        $this->expectExceptionMessageIsOrContains('Invalid strokeStyle keyword "soild"');
 
         $this->parser->parse([
             's' => [
@@ -543,7 +543,7 @@ final class TokenParserTest extends TestCase
     public function testStrokeStyleObjectInvalidLineCapThrows(): void
     {
         $this->expectException(TokenException::class);
-        $this->expectExceptionMessage('Invalid strokeStyle lineCap "flat"');
+        $this->expectExceptionMessageIsOrContains('Invalid strokeStyle lineCap "flat"');
 
         $this->parser->parse([
             's' => [
@@ -720,7 +720,7 @@ final class TokenParserTest extends TestCase
     public function testFontFamilyWithNonStringEntryThrows(): void
     {
         $this->expectException(TokenException::class);
-        $this->expectExceptionMessage('FontFamily entries must be strings');
+        $this->expectExceptionMessageIsOrContains('FontFamily entries must be strings');
 
         $this->parser->parse([
             'font' => [
@@ -735,7 +735,7 @@ final class TokenParserTest extends TestCase
     public function testShadowWithNonNumericDimensionValueThrows(): void
     {
         $this->expectException(TokenException::class);
-        $this->expectExceptionMessage('must be numeric');
+        $this->expectExceptionMessageIsOrContains('must be numeric');
 
         $this->parser->parse([
             'sh' => [
@@ -758,7 +758,7 @@ final class TokenParserTest extends TestCase
     public function testUnsupportedTypeThrows(): void
     {
         $this->expectException(TokenException::class);
-        $this->expectExceptionMessage('Unsupported token type "weird"');
+        $this->expectExceptionMessageIsOrContains('Unsupported token type "weird"');
 
         $this->parser->parse([
             'x' => [
@@ -963,7 +963,7 @@ final class TokenParserTest extends TestCase
     public function testNonScalarStringValueThrows(): void
     {
         $this->expectException(TokenException::class);
-        $this->expectExceptionMessage('scalar');
+        $this->expectExceptionMessageIsOrContains('scalar');
 
         $this->parser->parse([
             'label' => [
@@ -976,7 +976,7 @@ final class TokenParserTest extends TestCase
     public function testNonScalarLinkValueThrows(): void
     {
         $this->expectException(TokenException::class);
-        $this->expectExceptionMessage('scalar');
+        $this->expectExceptionMessageIsOrContains('scalar');
 
         $this->parser->parse([
             'logo' => [
@@ -989,7 +989,7 @@ final class TokenParserTest extends TestCase
     public function testNonNumericNumberValueThrows(): void
     {
         $this->expectException(TokenException::class);
-        $this->expectExceptionMessage('numeric');
+        $this->expectExceptionMessageIsOrContains('numeric');
 
         $this->parser->parse([
             'opacity' => [
@@ -1002,7 +1002,7 @@ final class TokenParserTest extends TestCase
     public function testDimensionMissingUnitThrows(): void
     {
         $this->expectException(TokenException::class);
-        $this->expectExceptionMessage('unit');
+        $this->expectExceptionMessageIsOrContains('unit');
 
         $this->parser->parse([
             'space' => [
@@ -1017,7 +1017,7 @@ final class TokenParserTest extends TestCase
     public function testTypographyMissingFontSizeThrows(): void
     {
         $this->expectException(TokenException::class);
-        $this->expectExceptionMessage('fontSize');
+        $this->expectExceptionMessageIsOrContains('fontSize');
 
         $this->parser->parse([
             'body' => [
@@ -1033,7 +1033,7 @@ final class TokenParserTest extends TestCase
     public function testCubicBezierWithThreeEntriesThrows(): void
     {
         $this->expectException(TokenException::class);
-        $this->expectExceptionMessage('must be an array of 4 numbers, got 3');
+        $this->expectExceptionMessageIsOrContains('must be an array of 4 numbers, got 3');
 
         $this->parser->parse([
             'ease' => [
@@ -1132,7 +1132,7 @@ final class TokenParserTest extends TestCase
     public function testDimensionWithNonNumericNonArrayValueThrows(): void
     {
         $this->expectException(TokenException::class);
-        $this->expectExceptionMessage('Dimension token value expects an object, got string.');
+        $this->expectExceptionMessageIsOrContains('Dimension token value expects an object, got string.');
 
         $this->parser->parse([
             'space' => [
@@ -1145,7 +1145,7 @@ final class TokenParserTest extends TestCase
     public function testFontFamilyNonStringNonArrayValueThrows(): void
     {
         $this->expectException(TokenException::class);
-        $this->expectExceptionMessage('FontFamily token value must be a string or array of strings.');
+        $this->expectExceptionMessageIsOrContains('FontFamily token value must be a string or array of strings.');
 
         $this->parser->parse([
             'sans' => [
@@ -1158,7 +1158,7 @@ final class TokenParserTest extends TestCase
     public function testFontWeightNonNumericNonStringValueThrows(): void
     {
         $this->expectException(TokenException::class);
-        $this->expectExceptionMessage('fontWeight expects a keyword or number, got bool.');
+        $this->expectExceptionMessageIsOrContains('fontWeight expects a keyword or number, got bool.');
 
         $this->parser->parse([
             'w' => [
@@ -1212,7 +1212,7 @@ final class TokenParserTest extends TestCase
     public function testColorDtcgObjectMissingChannelsThrows(): void
     {
         $this->expectException(TokenException::class);
-        $this->expectExceptionMessage('DTCG color must have "channels" or "components".');
+        $this->expectExceptionMessageIsOrContains('DTCG color must have "channels" or "components".');
 
         $this->parser->parse([
             'c' => [
@@ -1229,7 +1229,7 @@ final class TokenParserTest extends TestCase
         // An array without a `colorSpace` key is neither a hex string nor a
         // valid DTCG color object.
         $this->expectException(TokenException::class);
-        $this->expectExceptionMessage('Color token value must be a hex string or DTCG color object.');
+        $this->expectExceptionMessageIsOrContains('Color token value must be a hex string or DTCG color object.');
 
         $this->parser->parse([
             'c' => [
@@ -1270,7 +1270,7 @@ final class TokenParserTest extends TestCase
     public function testGradientNonArrayValueThrows(): void
     {
         $this->expectException(TokenException::class);
-        $this->expectExceptionMessage('Gradient token value must be an array of color stops.');
+        $this->expectExceptionMessageIsOrContains('Gradient token value must be an array of color stops.');
 
         $this->parser->parse([
             'g' => [
@@ -1283,7 +1283,7 @@ final class TokenParserTest extends TestCase
     public function testStrokeStyleNonStringNonArrayValueThrows(): void
     {
         $this->expectException(TokenException::class);
-        $this->expectExceptionMessage('StrokeStyle token value must be a string or object.');
+        $this->expectExceptionMessageIsOrContains('StrokeStyle token value must be a string or object.');
 
         $this->parser->parse([
             's' => [
@@ -1296,7 +1296,7 @@ final class TokenParserTest extends TestCase
     public function testCubicBezierNonNumericEntryThrows(): void
     {
         $this->expectException(TokenException::class);
-        $this->expectExceptionMessage('CubicBezier token value entry 1 must be numeric, got string.');
+        $this->expectExceptionMessageIsOrContains('CubicBezier token value entry 1 must be numeric, got string.');
 
         $this->parser->parse([
             'ease' => [
@@ -1309,7 +1309,7 @@ final class TokenParserTest extends TestCase
     public function testShadowNonArrayValueThrows(): void
     {
         $this->expectException(TokenException::class);
-        $this->expectExceptionMessage('Shadow token value must be an object or array of objects.');
+        $this->expectExceptionMessageIsOrContains('Shadow token value must be an object or array of objects.');
 
         $this->parser->parse([
             'sh' => [
@@ -1366,7 +1366,7 @@ final class TokenParserTest extends TestCase
     public function testMultiLayerShadowWithNonObjectLayerThrows(): void
     {
         $this->expectException(TokenException::class);
-        $this->expectExceptionMessage('Shadow layer must be an object.');
+        $this->expectExceptionMessageIsOrContains('Shadow layer must be an object.');
 
         $this->parser->parse([
             'sh' => [
@@ -1381,7 +1381,7 @@ final class TokenParserTest extends TestCase
     public function testGroupTypeNotAStringThrows(): void
     {
         $this->expectException(TokenException::class);
-        $this->expectExceptionMessage('$type must be a string, got array.');
+        $this->expectExceptionMessageIsOrContains('$type must be a string, got array.');
 
         $this->parser->parse([
             'g' => [
@@ -1396,7 +1396,7 @@ final class TokenParserTest extends TestCase
     public function testTokenTypeNotAStringThrows(): void
     {
         $this->expectException(TokenException::class);
-        $this->expectExceptionMessage('$type must be a string, got int.');
+        $this->expectExceptionMessageIsOrContains('$type must be a string, got int.');
 
         $this->parser->parse([
             't' => [
@@ -1409,7 +1409,7 @@ final class TokenParserTest extends TestCase
     public function testModeExtensionNotAnObjectThrows(): void
     {
         $this->expectException(TokenException::class);
-        $this->expectExceptionMessage('$extensions.mode must be an object');
+        $this->expectExceptionMessageIsOrContains('$extensions.mode must be an object');
 
         $this->parser->parse([
             'c' => [
@@ -1446,7 +1446,7 @@ final class TokenParserTest extends TestCase
     public function testColorSpaceNotAStringThrows(): void
     {
         $this->expectException(TokenException::class);
-        $this->expectExceptionMessage('"colorSpace" must be a string, got int.');
+        $this->expectExceptionMessageIsOrContains('"colorSpace" must be a string, got int.');
 
         $this->parser->parse([
             'c' => [
@@ -1462,7 +1462,7 @@ final class TokenParserTest extends TestCase
     public function testColorChannelsNotAnArrayThrows(): void
     {
         $this->expectException(TokenException::class);
-        $this->expectExceptionMessage('channels must be an array');
+        $this->expectExceptionMessageIsOrContains('channels must be an array');
 
         $this->parser->parse([
             'c' => [
@@ -1478,7 +1478,7 @@ final class TokenParserTest extends TestCase
     public function testColorChannelEntryNotNumericThrows(): void
     {
         $this->expectException(TokenException::class);
-        $this->expectExceptionMessage('channel must be numeric or null, got string.');
+        $this->expectExceptionMessageIsOrContains('channel must be numeric or null, got string.');
 
         $this->parser->parse([
             'c' => [
@@ -1494,7 +1494,7 @@ final class TokenParserTest extends TestCase
     public function testColorAlphaNotNumericThrows(): void
     {
         $this->expectException(TokenException::class);
-        $this->expectExceptionMessage('"alpha" must be numeric, got string.');
+        $this->expectExceptionMessageIsOrContains('"alpha" must be numeric, got string.');
 
         $this->parser->parse([
             'c' => [
@@ -1512,7 +1512,7 @@ final class TokenParserTest extends TestCase
     {
         // Silently coercing "abc" to 0px would corrupt every consumer.
         $this->expectException(TokenException::class);
-        $this->expectExceptionMessage('"value" must be numeric, got string.');
+        $this->expectExceptionMessageIsOrContains('"value" must be numeric, got string.');
 
         $this->parser->parse([
             'space' => [
@@ -1528,7 +1528,7 @@ final class TokenParserTest extends TestCase
     public function testDurationNonNumericValueThrows(): void
     {
         $this->expectException(TokenException::class);
-        $this->expectExceptionMessage('"value" must be numeric, got string.');
+        $this->expectExceptionMessageIsOrContains('"value" must be numeric, got string.');
 
         $this->parser->parse([
             'fast' => [
@@ -1546,7 +1546,7 @@ final class TokenParserTest extends TestCase
         // CSS's "normal" keyword is not a DTCG lineHeight; coercing it to 0
         // would collapse every line box.
         $this->expectException(TokenException::class);
-        $this->expectExceptionMessage('lineHeight must be numeric, got string.');
+        $this->expectExceptionMessageIsOrContains('lineHeight must be numeric, got string.');
 
         $this->parser->parse([
             'body' => [
@@ -1568,7 +1568,7 @@ final class TokenParserTest extends TestCase
     {
         // (bool) "false" is true in PHP — exactly the coercion to refuse.
         $this->expectException(TokenException::class);
-        $this->expectExceptionMessage('boolean token expects a bool value, got string.');
+        $this->expectExceptionMessageIsOrContains('boolean token expects a bool value, got string.');
 
         $this->parser->parse([
             'flag' => [
@@ -1583,7 +1583,7 @@ final class TokenParserTest extends TestCase
         // On a 2000-token file, a type-scoped message without the token path
         // is close to useless.
         $this->expectException(TokenException::class);
-        $this->expectExceptionMessage('Token "space.bad": Dimension token value has invalid unit "pt"');
+        $this->expectExceptionMessageIsOrContains('Token "space.bad": Dimension token value has invalid unit "pt"');
 
         $this->parser->parse([
             'space' => [
@@ -1619,6 +1619,61 @@ final class TokenParserTest extends TestCase
         } catch (TokenException $exception) {
             self::assertLessThan(300, \strlen($exception->getMessage()));
         }
+    }
+
+    public function testExplicitNullModeExtensionThrows(): void
+    {
+        // isset() would let an explicit null slip past the object check and
+        // silently disable modes.
+        $this->expectException(TokenException::class);
+        $this->expectExceptionMessageIsOrContains('$extensions.mode must be an object');
+
+        $this->parser->parse([
+            'c' => [
+                '$type' => 'color',
+                '$value' => '#ff0000',
+                '$extensions' => [
+                    'mode' => null,
+                ],
+            ],
+        ]);
+    }
+
+    public function testExplicitNullTypeThrows(): void
+    {
+        // An authored `"$type": null` is not "absent": inheriting the group
+        // type would contradict the promise that a present $type is a string.
+        $this->expectException(TokenException::class);
+        $this->expectExceptionMessageIsOrContains('$type must be a string, got null.');
+
+        $this->parser->parse([
+            'g' => [
+                '$type' => 'color',
+                'a' => [
+                    '$type' => null,
+                    '$value' => '#ff0000',
+                ],
+            ],
+        ]);
+    }
+
+    public function testSingleStopGradientThrows(): void
+    {
+        // "linear-gradient(rgb(255 0 0) 0%)" is invalid CSS: two stops minimum.
+        $this->expectException(TokenException::class);
+        $this->expectExceptionMessageIsOrContains('at least two color stops');
+
+        $this->parser->parse([
+            'g' => [
+                '$type' => 'gradient',
+                '$value' => [
+                    [
+                        'color' => '#ff0000',
+                        'position' => 0,
+                    ],
+                ],
+            ],
+        ]);
     }
 
     public function testNumericTopLevelTokenKeyIsSupported(): void
@@ -1676,7 +1731,7 @@ final class TokenParserTest extends TestCase
         ];
 
         $this->expectException(TokenException::class);
-        $this->expectExceptionMessage('Alias chain is too deep');
+        $this->expectExceptionMessageIsOrContains('Alias chain is too deep');
 
         $this->parser->parse($raw);
     }
@@ -1692,7 +1747,7 @@ final class TokenParserTest extends TestCase
     public function testChainOneHopPastTheLimitThrows(): void
     {
         $this->expectException(TokenException::class);
-        $this->expectExceptionMessage('Alias chain is too deep');
+        $this->expectExceptionMessageIsOrContains('Alias chain is too deep');
 
         $this->parser->parse($this->aliasChain(100));
     }
@@ -1742,7 +1797,8 @@ final class TokenParserTest extends TestCase
         // The mode is hoisted through the whole chain: the nested alias
         // resolves to the seed's dark value, not its base one.
         $base = $last->extras()['x1'];
-        $dark = $last->forMode('dark')->extras()['x1'];
+        $dark = $last->forMode('dark')
+            ->extras()['x1'];
         self::assertIsArray($base);
         self::assertIsArray($dark);
         self::assertNotSame($base, $dark);
@@ -1752,7 +1808,7 @@ final class TokenParserTest extends TestCase
     {
         // Silently dropping it renders a dashed token as "solid".
         $this->expectException(TokenException::class);
-        $this->expectExceptionMessage('dashArray must be an array');
+        $this->expectExceptionMessageIsOrContains('dashArray must be an array');
 
         $this->parser->parse([
             's' => [
@@ -1767,7 +1823,7 @@ final class TokenParserTest extends TestCase
     public function testInvalidDashArrayEntryThrows(): void
     {
         $this->expectException(TokenException::class);
-        $this->expectExceptionMessage('dashArray entry must be');
+        $this->expectExceptionMessageIsOrContains('dashArray entry must be');
 
         $this->parser->parse([
             's' => [
@@ -1790,7 +1846,7 @@ final class TokenParserTest extends TestCase
         // The legacy bare-number path must apply the same finiteness guard
         // as the {value, unit} object path — "1e999" must not render "infpx".
         $this->expectException(TokenException::class);
-        $this->expectExceptionMessage('must be a finite number');
+        $this->expectExceptionMessageIsOrContains('must be a finite number');
 
         $this->parser->parse([
             'space' => [
@@ -1803,7 +1859,7 @@ final class TokenParserTest extends TestCase
     public function testStrokeStyleBareDashArrayEntryRejectsInfinity(): void
     {
         $this->expectException(TokenException::class);
-        $this->expectExceptionMessage('must be a finite number');
+        $this->expectExceptionMessageIsOrContains('must be a finite number');
 
         $this->parser->parse([
             's' => [
@@ -1818,7 +1874,7 @@ final class TokenParserTest extends TestCase
     public function testShadowDimensionRejectsInfinity(): void
     {
         $this->expectException(TokenException::class);
-        $this->expectExceptionMessage('must be a finite number');
+        $this->expectExceptionMessageIsOrContains('must be a finite number');
 
         $this->parser->parse([
             'sh' => [
@@ -1842,7 +1898,7 @@ final class TokenParserTest extends TestCase
     {
         // "linear-gradient()" is invalid CSS; refuse at parse time.
         $this->expectException(TokenException::class);
-        $this->expectExceptionMessage('at least one color stop');
+        $this->expectExceptionMessageIsOrContains('at least two color stops');
 
         $this->parser->parse([
             'g' => [
@@ -1855,7 +1911,7 @@ final class TokenParserTest extends TestCase
     public function testEmptyFontFamilyListThrows(): void
     {
         $this->expectException(TokenException::class);
-        $this->expectExceptionMessage('at least one family');
+        $this->expectExceptionMessageIsOrContains('at least one family');
 
         $this->parser->parse([
             'sans' => [
@@ -1868,7 +1924,7 @@ final class TokenParserTest extends TestCase
     public function testEmptyFontFamilyStringThrows(): void
     {
         $this->expectException(TokenException::class);
-        $this->expectExceptionMessage('must not be empty');
+        $this->expectExceptionMessageIsOrContains('must not be empty');
 
         $this->parser->parse([
             'sans' => [
@@ -1881,7 +1937,7 @@ final class TokenParserTest extends TestCase
     public function testEmptyShadowThrows(): void
     {
         $this->expectException(TokenException::class);
-        $this->expectExceptionMessage('at least one layer');
+        $this->expectExceptionMessageIsOrContains('at least one layer');
 
         $this->parser->parse([
             'sh' => [
@@ -1896,7 +1952,7 @@ final class TokenParserTest extends TestCase
         // The diagnostic must point at the token holding the broken alias
         // ("b"), not at the root of the resolution walk ("a").
         $this->expectException(TokenException::class);
-        $this->expectExceptionMessage('Alias "{missing}" in token "b"');
+        $this->expectExceptionMessageIsOrContains('Alias "{missing}" in token "b"');
 
         $this->parser->parse([
             'a' => [
@@ -1915,7 +1971,7 @@ final class TokenParserTest extends TestCase
         // is_numeric("1e999") is true and casts to INF, which would render as
         // "inf" in CSS output.
         $this->expectException(TokenException::class);
-        $this->expectExceptionMessage('must be a finite number');
+        $this->expectExceptionMessageIsOrContains('must be a finite number');
 
         $this->parser->parse([
             'n' => [
@@ -1928,7 +1984,7 @@ final class TokenParserTest extends TestCase
     public function testDimensionRejectsInfiniteValue(): void
     {
         $this->expectException(TokenException::class);
-        $this->expectExceptionMessage('must be a finite number');
+        $this->expectExceptionMessageIsOrContains('must be a finite number');
 
         $this->parser->parse([
             'space' => [
@@ -1945,7 +2001,7 @@ final class TokenParserTest extends TestCase
     {
         // y coordinates are unbounded in [0,1]-x terms but must stay finite.
         $this->expectException(TokenException::class);
-        $this->expectExceptionMessage('must be a finite number');
+        $this->expectExceptionMessageIsOrContains('must be a finite number');
 
         $this->parser->parse([
             'ease' => [
@@ -1958,7 +2014,7 @@ final class TokenParserTest extends TestCase
     public function testColorChannelRejectsInfinity(): void
     {
         $this->expectException(TokenException::class);
-        $this->expectExceptionMessage('must be a finite number');
+        $this->expectExceptionMessageIsOrContains('must be a finite number');
 
         $this->parser->parse([
             'c' => [
@@ -1976,7 +2032,7 @@ final class TokenParserTest extends TestCase
         // A flat "a.b" key and a nested a > b group collapse to the same path;
         // silently keeping the later one would drop a token without a trace.
         $this->expectException(TokenException::class);
-        $this->expectExceptionMessage('Duplicate token path "a.b"');
+        $this->expectExceptionMessageIsOrContains('Duplicate token path "a.b"');
 
         $this->parser->parse([
             'a.b' => [

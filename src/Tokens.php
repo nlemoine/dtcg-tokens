@@ -31,7 +31,8 @@ final readonly class Tokens implements \IteratorAggregate, \Countable
      */
     public static function fromArray(array $raw, ?TokenParser $parser = null): self
     {
-        $result = ($parser ?? new TokenParser())->parse($raw);
+        $result = ($parser ?? new TokenParser())
+            ->parse($raw);
 
         return new self($result->values, $result->metadata);
     }
@@ -91,10 +92,14 @@ final readonly class Tokens implements \IteratorAggregate, \Countable
 
     /**
      * A collection with every token bound to $mode — tokens that do not
-     * declare it keep their base value. Metadata (including declared mode
-     * lists) is carried over. The building block for themed output:
+     * declare it keep their base value. The building block for themed output:
      *
      *     $exporter->export($tokens->forMode('dark'));
+     *
+     * Descriptive metadata (description, deprecation) is retained, but the
+     * per-token mode lists are cleared: the projection is terminal, so it
+     * can no longer resolve any mode and must not claim otherwise. Project
+     * each mode from the original collection.
      */
     public function forMode(string $mode): self
     {

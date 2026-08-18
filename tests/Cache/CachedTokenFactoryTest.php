@@ -86,7 +86,8 @@ final class CachedTokenFactoryTest extends TestCase
         foreach ($classes as $class) {
             $properties = array_map(
                 static fn (\ReflectionProperty $property): string => $property->getName() . ':' . $property->getType(),
-                new \ReflectionClass($class)->getProperties(),
+                new \ReflectionClass($class)
+                    ->getProperties(),
             );
             sort($properties);
             $shapes[$class] = $properties;
@@ -105,10 +106,12 @@ final class CachedTokenFactoryTest extends TestCase
 
         // A negative TTL writes an already-expired entry: if expiresAfter()
         // is honored, the very next factory must miss and re-parse.
-        new CachedTokenFactory($this->countingLoader(), $pool, ttl: -1)->create();
+        new CachedTokenFactory($this->countingLoader(), $pool, ttl: -1)
+            ->create();
 
         $loader = $this->countingLoader();
-        new CachedTokenFactory($loader, $pool)->create();
+        new CachedTokenFactory($loader, $pool)
+            ->create();
 
         self::assertSame(1, $loader->loadCalls);
     }
@@ -198,7 +201,8 @@ final class CachedTokenFactoryTest extends TestCase
             // must serve from cache without reading the now-missing file. If it
             // called load() it would throw, so success proves the hit short-circuits.
             unlink($file);
-            $served = new CachedTokenFactory(new JsonFileLoader($file), $pool, debug: false)->create();
+            $served = new CachedTokenFactory(new JsonFileLoader($file), $pool, debug: false)
+                ->create();
             self::assertSame('rgb(255 0 0)', (string) $served->get('color.primary'));
         } finally {
             @unlink($file);
@@ -219,10 +223,12 @@ final class CachedTokenFactoryTest extends TestCase
 
         try {
             // Prime the pool, then read back purely from cache (source deleted).
-            new CachedTokenFactory(new JsonFileLoader($file), $pool)->create();
+            new CachedTokenFactory(new JsonFileLoader($file), $pool)
+                ->create();
             unlink($file);
 
-            $fromCache = new CachedTokenFactory(new JsonFileLoader($file), $pool, debug: false)->create();
+            $fromCache = new CachedTokenFactory(new JsonFileLoader($file), $pool, debug: false)
+                ->create();
 
             $primary = $fromCache->get('color.primary');
             self::assertInstanceOf(ColorValue::class, $primary);
@@ -251,10 +257,12 @@ final class CachedTokenFactoryTest extends TestCase
             $pool = new ArrayAdapter();
 
             // Prime the pool, then read back purely from cache (source deleted).
-            new CachedTokenFactory(new JsonFileLoader($file), $pool)->create();
+            new CachedTokenFactory(new JsonFileLoader($file), $pool)
+                ->create();
             unlink($file);
 
-            $fromCache = new CachedTokenFactory(new JsonFileLoader($file), $pool, debug: false)->create();
+            $fromCache = new CachedTokenFactory(new JsonFileLoader($file), $pool, debug: false)
+                ->create();
 
             $metadata = $fromCache->metadata('color.old');
             self::assertNotNull($metadata);
@@ -268,12 +276,14 @@ final class CachedTokenFactoryTest extends TestCase
     public function testNonDebugWarmPoolHitNeverTouchesSources(): void
     {
         $pool = new ArrayAdapter();
-        new CachedTokenFactory($this->countingLoader(), $pool)->create();
+        new CachedTokenFactory($this->countingLoader(), $pool)
+            ->create();
 
         // Fresh factory (empty in-process memo) over a warm pool: production
         // mode must serve the hit without a single stat or read.
         $loader = $this->countingLoader();
-        $tokens = new CachedTokenFactory($loader, $pool, debug: false)->create();
+        $tokens = new CachedTokenFactory($loader, $pool, debug: false)
+            ->create();
 
         self::assertSame('rgb(255 0 0)', (string) $tokens->get('color.primary'));
         self::assertSame(0, $loader->loadCalls);
@@ -402,10 +412,12 @@ final class CachedTokenFactoryTest extends TestCase
             ],
         ]);
 
-        new CachedTokenFactory($loader, $pool)->create();
+        new CachedTokenFactory($loader, $pool)
+            ->create();
 
         $second = new CountingLoader($loader->raw);
-        $tokens = new CachedTokenFactory($second, $pool)->create();
+        $tokens = new CachedTokenFactory($second, $pool)
+            ->create();
 
         self::assertSame('4px', (string) $tokens->get('4'));
         self::assertSame(0, $second->loadCalls, 'the cached entry must be served, not re-parsed');
@@ -479,7 +491,8 @@ final class CachedTokenFactoryTest extends TestCase
 
         self::assertTrue($factory->cacheWritten());
         $fresh = new CountingLoader($this->countingLoader()->raw);
-        new CachedTokenFactory($fresh, $pool)->create();
+        new CachedTokenFactory($fresh, $pool)
+            ->create();
         self::assertSame(0, $fresh->loadCalls);
     }
 
@@ -498,7 +511,8 @@ final class CachedTokenFactoryTest extends TestCase
 
         self::assertSame('rgb(255 0 0)', (string) $tokens->get('color.primary'));
         // Self-healing: the corrupted entry was replaced by a valid one.
-        $fresh = new CachedTokenFactory($this->countingLoader(), $pool, debug: false)->create();
+        $fresh = new CachedTokenFactory($this->countingLoader(), $pool, debug: false)
+            ->create();
         self::assertSame('rgb(255 0 0)', (string) $fresh->get('color.primary'));
     }
 

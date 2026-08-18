@@ -25,6 +25,16 @@ final class StrTest extends TestCase
         self::assertStringContainsString('5000 bytes', $excerpt);
     }
 
+    public function testTruncationDoesNotRequireMbstring(): void
+    {
+        // ext-mbstring is optional and undeclared: a consumer satisfying the
+        // production requirements must not hit an undefined-function fatal.
+        $source = file_get_contents(__DIR__ . '/../../src/Internal/Str.php');
+        self::assertIsString($source);
+
+        self::assertStringNotContainsString('mb_', $source);
+    }
+
     public function testTruncationKeepsValidUtf8(): void
     {
         // A byte-level cut through a multi-byte sequence makes the message

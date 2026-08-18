@@ -34,7 +34,7 @@ final class TokensTest extends TestCase
         $tokens = Tokens::fromFile(self::BASE);
 
         $this->expectException(TokenException::class);
-        $this->expectExceptionMessage('Design token "does.not.exist" not found.');
+        $this->expectExceptionMessageIsOrContains('Design token "does.not.exist" not found.');
 
         $tokens->get('does.not.exist');
     }
@@ -133,7 +133,8 @@ final class TokensTest extends TestCase
         self::assertTrue($tokens->has('4'));
         self::assertSame('4px', (string) $tokens->get('4'));
 
-        $css = new CssExporter()->export($tokens);
+        $css = new CssExporter()
+            ->export($tokens);
         self::assertStringContainsString('--4: 4px;', $css);
     }
 

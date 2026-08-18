@@ -19,13 +19,23 @@ final class Str
      * The bound is in bytes (that is what log pipelines care about) but the
      * cut lands on a codepoint boundary: a split multi-byte sequence makes
      * the message unencodable, and JSON log formatters drop the record.
+     *
+     * Done without ext-mbstring, which is optional and not a requirement of
+     * this package: UTF-8 continuation bytes are 10xxxxxx, so walking back
+     * off them lands on the start of a sequence.
      */
     public static function excerpt(string $value): string
     {
-        if (\strlen($value) <= self::EXCERPT_LIMIT) {
+        $length = \strlen($value);
+        if ($length <= self::EXCERPT_LIMIT) {
             return $value;
         }
 
-        return mb_strcut($value, 0, self::EXCERPT_LIMIT, 'UTF-8') . \sprintf('… (%d bytes total)', \strlen($value));
+        $cut = self::EXCERPT_LIMIT;
+        while ($cut > 0 && (\ord($value[$cut]) & 0xC0) === 0x80) {
+            $cut--;
+        }
+
+        return substr($value, 0, $cut) . \sprintf('… (%d bytes total)', $length);
     }
 }
