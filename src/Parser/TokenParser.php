@@ -158,7 +158,10 @@ final class TokenParser
                         : $groupDeprecated,
                 ];
 
-                if (isset($child['$extensions']) && \is_array($child['$extensions']) && isset($child['$extensions']['mode'])) {
+                // array_key_exists, not isset: an authored `"mode": null` is
+                // present-but-invalid, and must reach the type check below
+                // rather than silently disabling modes.
+                if (isset($child['$extensions']) && \is_array($child['$extensions']) && \array_key_exists('mode', $child['$extensions'])) {
                     $mode = $child['$extensions']['mode'];
                     if (! \is_array($mode)) {
                         throw TokenException::invalidValue(\sprintf(
@@ -184,9 +187,14 @@ final class TokenParser
      */
     private function stringTypeOf(array $node): ?string
     {
-        $type = $node['$type'] ?? null;
+        // Key presence, not ??: an authored `"$type": null` is malformed, and
+        // must not be treated as "absent" (which would inherit the group's).
+        if (! \array_key_exists('$type', $node)) {
+            return null;
+        }
 
-        if ($type !== null && ! \is_string($type)) {
+        $type = $node['$type'];
+        if (! \is_string($type)) {
             throw TokenException::invalidValue(\sprintf('$type must be a string, got %s.', get_debug_type($type)));
         }
 
@@ -632,11 +640,6 @@ final class TokenParser
             throw TokenException::invalidValue('Gradient token value must be an array of color stops.');
         }
 
-        if ($value === []) {
-            // "linear-gradient()" is invalid CSS.
-            throw TokenException::invalidValue('Gradient token value must contain at least one color stop.');
-        }
-
         /** @var list<array{color: ColorValue, position: float}> $stops */
         $stops = [];
         foreach ($value as $stop) {
@@ -655,6 +658,16 @@ final class TokenParser
                 'color' => $this->buildSingleColor($this->requireKey($stop, 'color', 'Gradient stop')),
                 'position' => (float) $position,
             ];
+        }
+
+        // Checked after the per-stop validation so a malformed single stop
+        // reports its own defect first. CSS needs two stops to interpolate;
+        // "linear-gradient()" and "linear-gradient(red 0%)" are both invalid.
+        if (\count($stops) < 2) {
+            throw TokenException::invalidValue(\sprintf(
+                'Gradient token value must contain at least two color stops, got %d.',
+                \count($stops),
+            ));
         }
 
         return new GradientValue($stops, $modeMap);

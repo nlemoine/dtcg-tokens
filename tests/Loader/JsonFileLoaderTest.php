@@ -66,7 +66,7 @@ final class JsonFileLoaderTest extends TestCase
         $loader = new JsonFileLoader(__DIR__ . '/../fixtures/does-not-exist.json');
 
         $this->expectException(TokenException::class);
-        $this->expectExceptionMessage('does-not-exist.json');
+        $this->expectExceptionMessageIsOrContains('does-not-exist.json');
 
         // No @ suppression: a missing file must raise a clean TokenException,
         // not an E_WARNING (which Symfony's ErrorHandler would promote to
@@ -89,7 +89,7 @@ final class JsonFileLoaderTest extends TestCase
             $loader = new JsonFileLoader($tmp);
 
             $this->expectException(TokenException::class);
-            $this->expectExceptionMessage('Cannot read token file');
+            $this->expectExceptionMessageIsOrContains('Cannot read token file');
 
             $loader->load();
         } finally {
@@ -107,7 +107,8 @@ final class JsonFileLoaderTest extends TestCase
         file_put_contents($tmp, "\xEF\xBB\xBF" . '{"color":{"$type":"color","primary":{"$value":"#ff0000"}}}');
 
         try {
-            $raw = new JsonFileLoader($tmp)->load();
+            $raw = new JsonFileLoader($tmp)
+                ->load();
 
             self::assertSame('#ff0000', $raw['color']['primary']['$value']);
         } finally {
@@ -125,7 +126,7 @@ final class JsonFileLoaderTest extends TestCase
             $loader = new JsonFileLoader($tmp);
 
             $this->expectException(TokenException::class);
-            $this->expectExceptionMessage('object');
+            $this->expectExceptionMessageIsOrContains('object');
 
             $loader->load();
         } finally {
@@ -163,7 +164,8 @@ final class JsonFileLoaderTest extends TestCase
         self::assertIsString($canonical);
 
         self::assertSame(
-            new JsonFileLoader($canonical)->fingerprint(),
+            new JsonFileLoader($canonical)
+                ->fingerprint(),
             new JsonFileLoader(self::BASE)->fingerprint(),
         );
     }
@@ -232,7 +234,8 @@ final class JsonFileLoaderTest extends TestCase
         ]);
 
         try {
-            $raw = new JsonFileLoader($base, $middle, $last)->load();
+            $raw = new JsonFileLoader($base, $middle, $last)
+                ->load();
 
             // Untouched from file 1; overridden by file 2; overridden twice,
             // last file wins. Group $type survives the whole chain.
@@ -267,7 +270,8 @@ final class JsonFileLoaderTest extends TestCase
         ]);
 
         try {
-            $raw = new JsonFileLoader($base, $override)->load();
+            $raw = new JsonFileLoader($base, $override)
+                ->load();
 
             // The override list replaces wholesale: no tail elements leak through.
             self::assertSame(['Roboto'], $raw['font']['body']['$value']);
@@ -306,7 +310,8 @@ final class JsonFileLoaderTest extends TestCase
         ]);
 
         try {
-            $raw = new JsonFileLoader($base, $override)->load();
+            $raw = new JsonFileLoader($base, $override)
+                ->load();
 
             self::assertSame([
                 'colorSpace' => 'display-p3',

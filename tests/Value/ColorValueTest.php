@@ -74,8 +74,8 @@ final class ColorValueTest extends TestCase
     {
         $color = ColorValue::fromComponents('hsl', [210.0, 100.0, 50.0], 1.0);
 
-        // G is exactly 127.5 at this hue; iris rounds it down.
-        self::assertSame('#007fff', $color->toHex());
+        // G is exactly 127.5 at this hue; rounded to nearest, like browsers.
+        self::assertSame('#0080ff', $color->toHex());
     }
 
     public function testHslNegativeHueIsNormalizedForConversion(): void
@@ -147,7 +147,7 @@ final class ColorValueTest extends TestCase
         $color = ColorValue::fromComponents('display-p3', [1.0, 0.0, 0.0], 1.0);
 
         $this->expectException(TokenException::class);
-        $this->expectExceptionMessage('has no sRGB fallback');
+        $this->expectExceptionMessageIsOrContains('has no sRGB fallback');
         $color->toHex();
     }
 
@@ -156,7 +156,7 @@ final class ColorValueTest extends TestCase
         $color = ColorValue::fromComponents('display-p3', [1.0, 0.0, 0.0], 1.0);
 
         $this->expectException(TokenException::class);
-        $this->expectExceptionMessage('has no sRGB fallback');
+        $this->expectExceptionMessageIsOrContains('has no sRGB fallback');
         $color->toRgb();
     }
 
@@ -285,7 +285,7 @@ final class ColorValueTest extends TestCase
         // Deferring this to toCss() would let the color parse fine and then
         // explode through __toString() mid-render (Twig, CssExporter).
         $this->expectException(TokenException::class);
-        $this->expectExceptionMessage('has no CSS serialization');
+        $this->expectExceptionMessageIsOrContains('has no CSS serialization');
 
         ColorValue::fromComponents('okhsv', [0.5, 0.5, 0.5], 1.0);
     }
@@ -293,14 +293,14 @@ final class ColorValueTest extends TestCase
     public function testUnknownColorSpaceThrows(): void
     {
         $this->expectException(TokenException::class);
-        $this->expectExceptionMessage('Unsupported color space "not-a-space"');
+        $this->expectExceptionMessageIsOrContains('Unsupported color space "not-a-space"');
         ColorValue::fromComponents('not-a-space', [0.0, 0.0, 0.0], 1.0);
     }
 
     public function testFromComponentsRejectsFewerThanThreeComponents(): void
     {
         $this->expectException(TokenException::class);
-        $this->expectExceptionMessage('requires at least 3 components, got 2');
+        $this->expectExceptionMessageIsOrContains('requires at least 3 components, got 2');
         ColorValue::fromComponents('srgb', [1.0, 0.0], 1.0);
     }
 
@@ -414,7 +414,7 @@ final class ColorValueTest extends TestCase
     public function testFromHexRejectsSevenDigitTypo(): void
     {
         $this->expectException(TokenException::class);
-        $this->expectExceptionMessage('Invalid hex color');
+        $this->expectExceptionMessageIsOrContains('Invalid hex color');
 
         ColorValue::fromHex('#ff00008');
     }
@@ -422,7 +422,7 @@ final class ColorValueTest extends TestCase
     public function testFromHexRejectsTenDigits(): void
     {
         $this->expectException(TokenException::class);
-        $this->expectExceptionMessage('Invalid hex color');
+        $this->expectExceptionMessageIsOrContains('Invalid hex color');
 
         ColorValue::fromHex('#aabbccddee');
     }
@@ -430,7 +430,7 @@ final class ColorValueTest extends TestCase
     public function testFromHexRejectsDoubleHash(): void
     {
         $this->expectException(TokenException::class);
-        $this->expectExceptionMessage('Invalid hex color');
+        $this->expectExceptionMessageIsOrContains('Invalid hex color');
 
         ColorValue::fromHex('##ff0000');
     }
@@ -438,7 +438,7 @@ final class ColorValueTest extends TestCase
     public function testFromHexRejectsNamedColor(): void
     {
         $this->expectException(TokenException::class);
-        $this->expectExceptionMessage('Invalid hex color');
+        $this->expectExceptionMessageIsOrContains('Invalid hex color');
 
         ColorValue::fromHex('red');
     }
@@ -456,7 +456,7 @@ final class ColorValueTest extends TestCase
     public function testFromHexRejectsEmptyString(): void
     {
         $this->expectException(TokenException::class);
-        $this->expectExceptionMessage('Invalid hex color');
+        $this->expectExceptionMessageIsOrContains('Invalid hex color');
 
         ColorValue::fromHex('');
     }
@@ -464,7 +464,7 @@ final class ColorValueTest extends TestCase
     public function testFromComponentsRejectsInvalidHexFallback(): void
     {
         $this->expectException(TokenException::class);
-        $this->expectExceptionMessage('Invalid hex color');
+        $this->expectExceptionMessageIsOrContains('Invalid hex color');
 
         ColorValue::fromComponents('okhsv', [0.5, 0.5, 0.5], 1.0, 'red');
     }
@@ -476,7 +476,7 @@ final class ColorValueTest extends TestCase
         $color = ColorValue::fromComponents('oklch', [0.7, 0.9, 30.0], 1.0);
 
         $this->expectException(TokenException::class);
-        $this->expectExceptionMessage('Cannot convert color in space "oklch"');
+        $this->expectExceptionMessageIsOrContains('Cannot convert color in space "oklch"');
 
         $color->toHex();
     }

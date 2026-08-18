@@ -17,7 +17,8 @@ final class CssExporterTest extends TestCase
 {
     public function testExportsTwoTokensAsCustomProperties(): void
     {
-        $css = new CssExporter()->export($this->tokens());
+        $css = new CssExporter()
+            ->export($this->tokens());
 
         self::assertSame(
             <<<CSS
@@ -26,14 +27,16 @@ final class CssExporterTest extends TestCase
               --space-md: 16px;
             }
 
-            CSS,
+            CSS
+            ,
             $css,
         );
     }
 
     public function testPrefixIsPrependedToEveryVariable(): void
     {
-        $css = new CssExporter(prefix: 'ds')->export($this->tokens());
+        $css = new CssExporter(prefix: 'ds')
+            ->export($this->tokens());
 
         self::assertStringContainsString('--ds-color-primary: rgb(255 0 0);', $css);
         self::assertStringContainsString('--ds-space-md: 16px;', $css);
@@ -41,14 +44,16 @@ final class CssExporterTest extends TestCase
 
     public function testCustomSelectorReplacesRoot(): void
     {
-        $css = new CssExporter(selector: '[data-theme]')->export($this->tokens());
+        $css = new CssExporter(selector: '[data-theme]')
+            ->export($this->tokens());
 
         self::assertStringStartsWith('[data-theme] {', $css);
     }
 
     public function testEmptyCollectionEmitsSelectorWithoutBlankLine(): void
     {
-        $css = new CssExporter()->export(new Tokens([]));
+        $css = new CssExporter()
+            ->export(new Tokens([]));
 
         self::assertSame(":root {\n}\n", $css);
     }
@@ -59,7 +64,8 @@ final class CssExporterTest extends TestCase
             'color brand primary' => ColorValue::fromHex('#ff0000'),
         ]);
 
-        $css = new CssExporter()->export($tokens);
+        $css = new CssExporter()
+            ->export($tokens);
 
         self::assertStringContainsString('--color-brand-primary: rgb(255 0 0);', $css);
     }
@@ -73,9 +79,10 @@ final class CssExporterTest extends TestCase
         ]);
 
         $this->expectException(TokenException::class);
-        $this->expectExceptionMessage('cannot be exported as a CSS custom property name');
+        $this->expectExceptionMessageIsOrContains('cannot be exported as a CSS custom property name');
 
-        new CssExporter()->export($tokens);
+        new CssExporter()
+            ->export($tokens);
     }
 
     public function testStringValueThatWouldBreakOutOfDeclarationIsRejected(): void
@@ -88,9 +95,10 @@ final class CssExporterTest extends TestCase
         ]);
 
         $this->expectException(TokenException::class);
-        $this->expectExceptionMessage('break out of a CSS declaration');
+        $this->expectExceptionMessageIsOrContains('break out of a CSS declaration');
 
-        new CssExporter()->export($tokens);
+        new CssExporter()
+            ->export($tokens);
     }
 
     public function testValueContainingCommentOpenerIsRejected(): void
@@ -103,9 +111,10 @@ final class CssExporterTest extends TestCase
         ]);
 
         $this->expectException(TokenException::class);
-        $this->expectExceptionMessage('break out of a CSS declaration');
+        $this->expectExceptionMessageIsOrContains('break out of a CSS declaration');
 
-        new CssExporter()->export($tokens);
+        new CssExporter()
+            ->export($tokens);
     }
 
     public function testCollidingVariableNamesAreRejected(): void
@@ -118,9 +127,10 @@ final class CssExporterTest extends TestCase
         ]);
 
         $this->expectException(TokenException::class);
-        $this->expectExceptionMessage('both map to the CSS custom property "--a-b"');
+        $this->expectExceptionMessageIsOrContains('both map to the CSS custom property "--a-b"');
 
-        new CssExporter()->export($tokens);
+        new CssExporter()
+            ->export($tokens);
     }
 
     /**
@@ -154,9 +164,10 @@ final class CssExporterTest extends TestCase
         ]);
 
         $this->expectException(TokenException::class);
-        $this->expectExceptionMessage('cannot be exported');
+        $this->expectExceptionMessageIsOrContains('cannot be exported');
 
-        new CssExporter()->export($tokens);
+        new CssExporter()
+            ->export($tokens);
     }
 
     public function testLegitimateNestedAndQuotedValuesStillExport(): void
@@ -187,7 +198,8 @@ final class CssExporterTest extends TestCase
             ],
         ]);
 
-        $css = new CssExporter()->export($tokens);
+        $css = new CssExporter()
+            ->export($tokens);
 
         self::assertStringContainsString('linear-gradient(rgb(255 0 0) 0%, rgb(0 0 255) 100%)', $css);
         self::assertStringContainsString('"Helvetica Neue", "My \"Quoted\" Face", "back\\\\slash", sans-serif', $css);
@@ -206,7 +218,8 @@ final class CssExporterTest extends TestCase
             ],
         ]);
 
-        $css = new CssExporter()->export($tokens);
+        $css = new CssExporter()
+            ->export($tokens);
 
         self::assertStringContainsString('--thème-primaire: rgb(255 0 0);', $css);
     }
@@ -228,7 +241,8 @@ final class CssExporterTest extends TestCase
             ],
         ]);
 
-        $css = new CssExporter(selector: '[data-theme="dark"]')->export($tokens->forMode('dark'));
+        $css = new CssExporter(selector: '[data-theme="dark"]')
+            ->export($tokens->forMode('dark'));
 
         self::assertSame(
             <<<'CSS'
@@ -236,7 +250,8 @@ final class CssExporterTest extends TestCase
               --color-fg: rgb(0 0 0);
             }
 
-            CSS,
+            CSS
+            ,
             $css,
         );
     }

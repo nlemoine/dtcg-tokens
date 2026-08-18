@@ -51,7 +51,7 @@ final class StrokeStyleValueTest extends TestCase
     public function testFromKeywordRejectsUnknownKeyword(): void
     {
         $this->expectException(TokenException::class);
-        $this->expectExceptionMessage('Invalid strokeStyle keyword "soild"; expected one of solid, dashed');
+        $this->expectExceptionMessageIsOrContains('Invalid strokeStyle keyword "soild"; expected one of solid, dashed');
 
         StrokeStyleValue::fromKeyword('soild');
     }

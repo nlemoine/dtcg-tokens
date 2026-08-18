@@ -24,11 +24,14 @@ final class DtcgTokensBundle extends AbstractBundle
         $definition->rootNode()
             ->children()
             ->arrayNode('files')
-            ->scalarPrototype()->end()
+            ->scalarPrototype()
+            ->end()
             ->isRequired()
             ->requiresAtLeastOneElement()
             ->end()
-            ->scalarNode('cache')->defaultNull()->end()
+            ->scalarNode('cache')
+            ->defaultNull()
+            ->end()
             ->end();
     }
 
