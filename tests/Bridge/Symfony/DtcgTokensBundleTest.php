@@ -93,6 +93,40 @@ final class DtcgTokensBundleTest extends TestCase
         self::assertNull($arguments[1]);
     }
 
+    public function testTtlConfigIsPassedToTheFactory(): void
+    {
+        $builder = $this->load([
+            'files' => [self::FIXTURE],
+            'ttl' => 3600,
+        ]);
+
+        $arguments = $builder->getDefinition(CachedTokenFactory::class)->getArguments();
+
+        // 5th constructor argument is the optional TTL.
+        self::assertSame(3600, $arguments[4]);
+    }
+
+    public function testOmittingTtlYieldsNullTtlArgument(): void
+    {
+        $builder = $this->load([
+            'files' => [self::FIXTURE],
+        ]);
+
+        self::assertNull($builder->getDefinition(CachedTokenFactory::class)->getArguments()[4]);
+    }
+
+    public function testNonPositiveTtlIsRejected(): void
+    {
+        // A zero or negative TTL would write an already-expired entry on
+        // every request, making the pool pure overhead.
+        $this->expectException(InvalidConfigurationException::class);
+
+        $this->load([
+            'files' => [self::FIXTURE],
+            'ttl' => 0,
+        ]);
+    }
+
     public function testEmptyFilesListIsRejected(): void
     {
         $this->expectException(InvalidConfigurationException::class);

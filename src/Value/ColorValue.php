@@ -20,6 +20,8 @@ use n5s\DtcgTokens\Internal\Str;
  */
 final readonly class ColorValue implements TokenValueInterface
 {
+    use ResolvesModes;
+
     /**
      * Spaces with a dedicated CSS function whose components are emitted verbatim.
      * `lab-d65` has no CSS function, but its values are compatible with `lab()`.
@@ -141,7 +143,47 @@ final readonly class ColorValue implements TokenValueInterface
         // so it must actually be hex — reject anything else at construction.
         $hex = $hex === null ? null : self::normalizeHex($hex);
 
+        // For srgb the components ARE the sRGB channels, so a hex naming a
+        // different color would make toCss() and toHex() emit two colors.
+        // (For hsl/oklch the hex is the author's chosen approximation — the
+        // DTCG spec's stated purpose for the fallback — so it is authoritative
+        // there, not checked.)
+        if ($hex !== null && $colorSpace === 'srgb') {
+            self::assertHexMatchesSrgbComponents($hex, $components, $alpha);
+        }
+
         return new self($colorSpace, $components, $alpha, $hex, $modes);
+    }
+
+    /**
+     * @param list<float|null> $components
+     */
+    private static function assertHexMatchesSrgbComponents(string $normalizedHex, array $components, float $alpha): void
+    {
+        [$r, $g, $b, $hexAlpha] = self::parseHex($normalizedHex);
+
+        $expected = [];
+        foreach ([0, 1, 2] as $index) {
+            $expected[] = (int) round(max(0.0, min(1.0, (float) ($components[$index] ?? 0.0))) * 255);
+        }
+
+        // Tolerance of one 8-bit step per channel: authoring tools round
+        // half-steps differently. Alpha only exists in #rgba/#rrggbbaa.
+        $hexCarriesAlpha = \in_array(\strlen($normalizedHex), [5, 9], true);
+        if (
+            abs($r - $expected[0]) > 1
+            || abs($g - $expected[1]) > 1
+            || abs($b - $expected[2]) > 1
+            || ($hexCarriesAlpha && abs($hexAlpha - $alpha) > 0.02)
+        ) {
+            throw TokenException::invalidValue(\sprintf(
+                'Color hex fallback "%s" contradicts its components (they encode #%02x%02x%02x).',
+                $normalizedHex,
+                $expected[0],
+                $expected[1],
+                $expected[2],
+            ));
+        }
     }
 
     /**
@@ -248,29 +290,26 @@ final readonly class ColorValue implements TokenValueInterface
         return $this->hex;
     }
 
-    public function forMode(string $mode): static
-    {
-        return $this->modes[$mode] ?? $this;
-    }
-
     /**
-     * Reduce to 8-bit sRGB channels. Uses the hex fallback if present, else
-     * the cheap iris path for sRGB-reducible spaces, else throws.
+     * Reduce to 8-bit sRGB channels. The author-provided hex takes precedence
+     * everywhere — it is the author's chosen sRGB representation (the DTCG
+     * spec's stated purpose for the fallback), and using it in both toHex()
+     * and toRgb() means the two can never disagree. For srgb itself the hex
+     * is validated against the components at construction, so precedence is
+     * moot there. Without a hex, reducible spaces convert from components.
      *
      * @return array{int, int, int}
      */
     private function toRgbChannels(): array
     {
-        // sRGB-reducible spaces compute directly from their (lossless) components.
-        if (\in_array($this->colorSpace, self::SRGB_REDUCIBLE, true)) {
-            return $this->reducibleToRgbChannels();
-        }
-
-        // Other spaces need an author-provided sRGB fallback.
         if ($this->hex !== null) {
             [$r, $g, $b] = self::parseHex($this->hex);
 
             return [$r, $g, $b];
+        }
+
+        if (\in_array($this->colorSpace, self::SRGB_REDUCIBLE, true)) {
+            return $this->reducibleToRgbChannels();
         }
 
         throw TokenException::invalidValue(\sprintf(
@@ -353,7 +392,8 @@ final readonly class ColorValue implements TokenValueInterface
             (int) hexdec(substr($digits, 0, 2)),
             (int) hexdec(substr($digits, 2, 2)),
             (int) hexdec(substr($digits, 4, 2)),
-            \strlen($digits) === 8 ? round(hexdec(substr($digits, 6, 2)) / 255, 2) : 1.0,
+            // Exact, not rounded: storage is lossless, display rounds.
+            \strlen($digits) === 8 ? hexdec(substr($digits, 6, 2)) / 255 : 1.0,
         ];
     }
 

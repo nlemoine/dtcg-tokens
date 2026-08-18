@@ -6,6 +6,8 @@ namespace n5s\DtcgTokens\Value;
 
 final readonly class TypographyValue implements TokenValueInterface
 {
+    use ResolvesModes;
+
     /**
      * @internal
      *
@@ -78,10 +80,5 @@ final readonly class TypographyValue implements TokenValueInterface
     public function extras(): array
     {
         return $this->extras;
-    }
-
-    public function forMode(string $mode): static
-    {
-        return $this->modes[$mode] ?? $this;
     }
 }

@@ -113,7 +113,7 @@ final readonly class Tokens implements \IteratorAggregate, \Countable
         // stops a second forMode() from looking like it worked.
         $metadata = [];
         foreach ($this->metadata as $path => $entry) {
-            $metadata[$path] = new TokenMetadata($entry->description, $entry->deprecated);
+            $metadata[$path] = new TokenMetadata($entry->description, $entry->deprecated, type: $entry->type);
         }
 
         return new self($values, $metadata);

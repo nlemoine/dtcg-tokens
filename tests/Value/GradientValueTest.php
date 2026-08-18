@@ -31,32 +31,21 @@ final class GradientValueTest extends TestCase
         );
     }
 
-    public function testRendersFractionalPositionWithoutTruncation(): void
+    public function testRendersFractionalPositionsWithoutTruncation(): void
     {
         $gradient = new GradientValue([
             [
                 'color' => ColorValue::fromHex('#000000'),
                 'position' => 0.29,
             ],
-        ]);
-
-        self::assertSame(
-            'linear-gradient(rgb(0 0 0) 29%)',
-            (string) $gradient,
-        );
-    }
-
-    public function testRendersFractionalPercent(): void
-    {
-        $gradient = new GradientValue([
             [
-                'color' => ColorValue::fromHex('#000000'),
+                'color' => ColorValue::fromHex('#ffffff'),
                 'position' => 0.335,
             ],
         ]);
 
         self::assertSame(
-            'linear-gradient(rgb(0 0 0) 33.5%)',
+            'linear-gradient(rgb(0 0 0) 29%, rgb(255 255 255) 33.5%)',
             (string) $gradient,
         );
     }
@@ -67,6 +56,10 @@ final class GradientValueTest extends TestCase
             [
                 'color' => ColorValue::fromHex('#000000'),
                 'position' => 0.0,
+            ],
+            [
+                'color' => ColorValue::fromHex('#ffffff'),
+                'position' => 1.0,
             ],
         ]);
 

@@ -4,10 +4,13 @@ declare(strict_types=1);
 
 namespace n5s\DtcgTokens\Value;
 
+use n5s\DtcgTokens\Exception\TokenException;
 use n5s\DtcgTokens\Internal\Number;
 
 final readonly class NumberValue implements TokenValueInterface
 {
+    use ResolvesModes;
+
     /**
      * @internal
      *
@@ -17,6 +20,9 @@ final readonly class NumberValue implements TokenValueInterface
         private float $value,
         private ?array $modes = null,
     ) {
+        if (! is_finite($value)) {
+            throw TokenException::invalidValue('Number value must be a finite number.');
+        }
     }
 
     public function __toString(): string
@@ -32,10 +38,5 @@ final readonly class NumberValue implements TokenValueInterface
     public function value(): float
     {
         return $this->value;
-    }
-
-    public function forMode(string $mode): static
-    {
-        return $this->modes[$mode] ?? $this;
     }
 }

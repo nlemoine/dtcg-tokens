@@ -14,14 +14,14 @@ final class CountingLoader implements CacheableTokenLoaderInterface
 {
     public int $loadCalls = 0;
 
-    public int $mtimeCalls = 0;
+    public int $revisionCalls = 0;
 
     /**
      * @param array<string, mixed> $raw
      */
     public function __construct(
         public array $raw,
-        public int $mtime = 1_000,
+        public ?string $revision = '1000',
         private readonly string $fingerprint = 'counting',
     ) {
     }
@@ -33,11 +33,11 @@ final class CountingLoader implements CacheableTokenLoaderInterface
         return $this->raw;
     }
 
-    public function maxMtime(): int
+    public function revision(): ?string
     {
-        $this->mtimeCalls++;
+        $this->revisionCalls++;
 
-        return $this->mtime;
+        return $this->revision;
     }
 
     public function fingerprint(): string

@@ -54,8 +54,8 @@ final class CachedTokenFactoryTest extends TestCase
         // deploys (Redis, APCu) when that layout changes between releases.
         $factory = new CachedTokenFactory(new JsonFileLoader(self::BASE));
 
-        // v2: TokenMetadata gained a `modes` property (serialized shape change).
-        self::assertStringStartsWith('n5s_dtcg_tokens.v2.', $factory->cacheKey());
+        // v3: TokenMetadata gained `modes` and `type` (serialized shape change).
+        self::assertStringStartsWith('n5s_dtcg_tokens.v3.', $factory->cacheKey());
     }
 
     public function testCacheVersionIsPinnedToTheSerializedShapes(): void
@@ -94,7 +94,7 @@ final class CachedTokenFactoryTest extends TestCase
         }
 
         self::assertSame(
-            '396f3d02f6287c67964796cfa0a5cfd2',
+            'd2d740156ea4d73a959e50adb89604d0',
             hash('xxh128', (string) json_encode($shapes)),
             'The serialized shape of cached value objects changed: bump CachedTokenFactory::CACHE_VERSION, then update this pinned hash.',
         );
@@ -133,9 +133,9 @@ final class CachedTokenFactoryTest extends TestCase
                 ];
             }
 
-            public function maxMtime(): int
+            public function revision(): ?string
             {
-                return 0;
+                return null;
             }
 
             public function fingerprint(): string
@@ -287,7 +287,7 @@ final class CachedTokenFactoryTest extends TestCase
 
         self::assertSame('rgb(255 0 0)', (string) $tokens->get('color.primary'));
         self::assertSame(0, $loader->loadCalls);
-        self::assertSame(0, $loader->mtimeCalls);
+        self::assertSame(0, $loader->revisionCalls);
     }
 
     public function testDebugMemoRevalidatesWhenSourcesChange(): void
@@ -307,7 +307,7 @@ final class CachedTokenFactoryTest extends TestCase
                 ],
             ],
         ];
-        $loader->mtime += 1_000;
+        $loader->revision = '2000';
 
         $second = $factory->create();
         self::assertTrue($second->has('color.two'));
@@ -327,13 +327,13 @@ final class CachedTokenFactoryTest extends TestCase
 
     public function testDebugServesFreshPoolEntryWithoutReparsing(): void
     {
-        // The fourth quadrant: debug=true AND stored mtime matches — the
+        // The fourth quadrant: debug=true AND stored revision matches — the
         // cached entry is fresh and must be served without a re-parse.
         $pool = new ArrayAdapter();
         $loader = $this->countingLoader();
         $factory = new CachedTokenFactory($loader, $pool, debug: true);
 
-        $this->seedEntry($pool, $factory->cacheKey(), $loader->mtime);
+        $this->seedEntry($pool, $factory->cacheKey(), $loader->revision);
 
         $tokens = $factory->create();
 
@@ -341,15 +341,15 @@ final class CachedTokenFactoryTest extends TestCase
         self::assertSame(0, $loader->loadCalls);
     }
 
-    public function testDebugReParsesWhenStoredMtimeIsStale(): void
+    public function testDebugReParsesWhenStoredRevisionIsStale(): void
     {
         $pool = new ArrayAdapter();
         $loader = new JsonFileLoader(self::BASE);
         $factory = new CachedTokenFactory($loader, $pool, debug: true);
 
-        $this->seedStaleEntry($pool, $factory->cacheKey(), $loader->maxMtime());
+        $this->seedStaleEntry($pool, $factory->cacheKey());
 
-        // debug=true: stale mtime must force a fresh parse from the real files.
+        // debug=true: a stale revision must force a fresh parse from the real files.
         $tokens = $factory->create();
 
         self::assertTrue($tokens->has('color.primary'));
@@ -363,9 +363,9 @@ final class CachedTokenFactoryTest extends TestCase
         $loader = new JsonFileLoader(self::BASE);
         $factory = new CachedTokenFactory($loader, $pool, debug: false);
 
-        $this->seedStaleEntry($pool, $factory->cacheKey(), $loader->maxMtime());
+        $this->seedStaleEntry($pool, $factory->cacheKey());
 
-        // debug=false: mtime is ignored, the stale cached values are served as-is.
+        // debug=false: the revision is ignored, the stale cached values are served as-is.
         $tokens = $factory->create();
 
         self::assertTrue($tokens->has('color.stale'));
@@ -382,6 +382,9 @@ final class CachedTokenFactoryTest extends TestCase
         $tokens = $factory->create();
 
         self::assertSame('rgb(255 0 0)', (string) $tokens->get('color.primary'));
+        // A completely unreachable pool must be distinguishable from "no
+        // pool configured" — that distinction is cacheWritten()'s one job.
+        self::assertFalse($factory->cacheWritten());
     }
 
     public function testSaveFailureDoesNotDiscardParsedTokens(): void
@@ -481,7 +484,7 @@ final class CachedTokenFactoryTest extends TestCase
 
         $item = $pool->getItem($factory->cacheKey());
         $item->set([
-            'mtime' => 1,
+            'revision' => '1',
             'values' => 'poison',
             'metadata' => [],
         ]);
@@ -535,42 +538,42 @@ final class CachedTokenFactoryTest extends TestCase
     public static function provideInvalidPayloads(): iterable
     {
         yield 'not an array' => ['garbage'];
-        yield 'missing mtime' => [[
+        yield 'missing revision' => [[
             'values' => [],
             'metadata' => [],
         ]];
-        yield 'non-int mtime' => [[
-            'mtime' => 'yesterday',
+        yield 'non-string revision' => [[
+            'revision' => 20_260_818,
             'values' => [],
             'metadata' => [],
         ]];
         yield 'missing values' => [[
-            'mtime' => 1,
+            'revision' => '1',
             'metadata' => [],
         ]];
         yield 'non-array values' => [[
-            'mtime' => 1,
+            'revision' => '1',
             'values' => 'nope',
             'metadata' => [],
         ]];
         yield 'missing metadata' => [[
-            'mtime' => 1,
+            'revision' => '1',
             'values' => [],
         ]];
         yield 'non-array metadata' => [[
-            'mtime' => 1,
+            'revision' => '1',
             'values' => [],
             'metadata' => 'nope',
         ]];
         yield 'value entry is not a token value' => [[
-            'mtime' => 1,
+            'revision' => '1',
             'values' => [
                 'a' => 'not-a-value-object',
             ],
             'metadata' => [],
         ]];
         yield 'metadata entry is not TokenMetadata' => [[
-            'mtime' => 1,
+            'revision' => '1',
             'values' => [],
             'metadata' => [
                 'a' => 'not-metadata',
@@ -592,10 +595,11 @@ final class CachedTokenFactoryTest extends TestCase
         self::assertSame('rgb(255 0 0)', (string) $factory->create()->get('color.primary'));
     }
 
-    public function testDebugTreatsUnknownMtimeAsAlwaysStale(): void
+    public function testDebugTreatsUnknownRevisionAsAlwaysStale(): void
     {
-        // A loader honestly reporting "mtime unknown" (0, per the interface
-        // contract) must not freeze the cache: 0 === 0 is not freshness.
+        // A loader honestly reporting "revision unknown" (null, per the
+        // interface contract) must not freeze the cache: null === null is
+        // not evidence of freshness.
         $pool = new ArrayAdapter();
         $loader = new CountingLoader([
             'color' => [
@@ -604,10 +608,10 @@ final class CachedTokenFactoryTest extends TestCase
                     '$value' => '#ff0000',
                 ],
             ],
-        ], mtime: 0);
+        ], revision: null);
         $factory = new CachedTokenFactory($loader, $pool, debug: true);
 
-        $this->seedEntry($pool, $factory->cacheKey(), 0);
+        $this->seedEntry($pool, $factory->cacheKey(), null);
 
         $tokens = $factory->create();
 
@@ -615,7 +619,7 @@ final class CachedTokenFactoryTest extends TestCase
         self::assertFalse($tokens->has('color.stale'));
     }
 
-    public function testDebugMemoIsNotReusedWhenMtimeUnknown(): void
+    public function testDebugMemoIsNotReusedWhenRevisionIsUnknown(): void
     {
         $loader = new CountingLoader([
             'color' => [
@@ -624,7 +628,7 @@ final class CachedTokenFactoryTest extends TestCase
                     '$value' => '#ff0000',
                 ],
             ],
-        ], mtime: 0);
+        ], revision: null);
         $factory = new CachedTokenFactory($loader, debug: true);
 
         self::assertTrue($factory->create()->has('color.primary'));
@@ -638,7 +642,7 @@ final class CachedTokenFactoryTest extends TestCase
             ],
         ];
 
-        // mtime stays 0 (unknown): debug must re-parse rather than trust it.
+        // the revision stays unknown: debug must re-parse rather than trust it.
         self::assertTrue($factory->create()->has('color.two'));
     }
 
@@ -655,24 +659,24 @@ final class CachedTokenFactoryTest extends TestCase
     }
 
     /**
-     * Pre-seed the pool, under the factory's own key, with an entry whose mtime
-     * is deliberately older than the loader's current maxMtime and whose values
-     * differ from the real fixture.
+     * Pre-seed the pool, under the factory's own key, with an entry whose
+     * revision differs from the loader's current one and whose values differ
+     * from the real fixture.
      */
-    private function seedStaleEntry(CacheItemPoolInterface $pool, string $key, int $currentMtime): void
+    private function seedStaleEntry(CacheItemPoolInterface $pool, string $key): void
     {
-        $this->seedEntry($pool, $key, $currentMtime - 1000);
+        $this->seedEntry($pool, $key, 'stale-revision');
     }
 
     /**
      * Pre-seed the pool with a recognizable entry ("color.stale") at an
-     * arbitrary stored mtime.
+     * arbitrary stored revision.
      */
-    private function seedEntry(CacheItemPoolInterface $pool, string $key, int $mtime): void
+    private function seedEntry(CacheItemPoolInterface $pool, string $key, ?string $revision): void
     {
         $item = $pool->getItem($key);
         $item->set([
-            'mtime' => $mtime,
+            'revision' => $revision,
             'values' => [
                 'color.stale' => ColorValue::fromHex('#abcdef'),
             ],

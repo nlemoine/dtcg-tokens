@@ -19,9 +19,12 @@ committed alongside application code. Three boundaries to know about:
   Twig `token()` function and the `hex` / `rgb` filters) bypass that check
   entirely. Twig autoescaping does not save you here: its default `html`
   strategy leaves `;`, `{` and `}` untouched, which is full rule injection
-  inside a `<style>` block. Prefer `CssExporter` for stylesheet output; if
-  you must interpolate a token into CSS in a template, use the `css`
-  escaping strategy (`{{ token('x')|e('css') }}`).
+  inside a `<style>` block. Twig's `css` escaping strategy is safe but also
+  escapes CSS-meaningful characters (`#ff0000` becomes `\23 ff0000`), so the
+  declaration silently stops working — do not use it for token values. The
+  reliable pattern: do not interpolate token values into `<style>` blocks at
+  all. Emit the stylesheet with `CssExporter` and reference tokens from
+  templates via `var(--token-name)`.
 - **The PSR-6 cache pool** is trusted and unvalidated: cached payloads are
   unserialized as-is. Do not point the factory at a pool writable by
   untrusted code.

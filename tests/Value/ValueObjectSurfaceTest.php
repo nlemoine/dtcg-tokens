@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace n5s\DtcgTokens\Tests\Value;
 
+use n5s\DtcgTokens\Exception\TokenException;
 use n5s\DtcgTokens\Tokens;
 use n5s\DtcgTokens\Value\BooleanValue;
 use n5s\DtcgTokens\Value\BorderValue;
@@ -264,5 +265,102 @@ final class ValueObjectSurfaceTest extends TestCase
                 ],
             ],
         ];
+    }
+
+    public function testDimensionRejectsUnknownUnitAtConstruction(): void
+    {
+        // new DimensionValue(1.0, 'furlongs') used to be constructible: the
+        // invariant lived only in the parser.
+        $this->expectException(TokenException::class);
+        $this->expectExceptionMessageIsOrContains('Invalid dimension unit "furlongs"');
+
+        new DimensionValue(1.0, 'furlongs');
+    }
+
+    public function testDimensionRejectsNonFiniteValueAtConstruction(): void
+    {
+        $this->expectException(TokenException::class);
+        $this->expectExceptionMessageIsOrContains('finite');
+
+        new DimensionValue(\INF, 'px');
+    }
+
+    public function testNumberRejectsNonFiniteValueAtConstruction(): void
+    {
+        $this->expectException(TokenException::class);
+        $this->expectExceptionMessageIsOrContains('finite');
+
+        new NumberValue(\NAN);
+    }
+
+    public function testCubicBezierRejectsWrongPointCountAtConstruction(): void
+    {
+        $this->expectException(TokenException::class);
+        $this->expectExceptionMessageIsOrContains('4 numbers');
+
+        /* @phpstan-ignore argument.type */
+        new CubicBezierValue([0.1, 0.2]);
+    }
+
+    public function testCubicBezierRejectsXOutOfRangeAtConstruction(): void
+    {
+        $this->expectException(TokenException::class);
+        $this->expectExceptionMessageIsOrContains('must be in [0, 1]');
+
+        new CubicBezierValue([5.0, 0.0, 0.5, 1.0]);
+    }
+
+    public function testFontFamilyRejectsEmptyListAtConstruction(): void
+    {
+        $this->expectException(TokenException::class);
+        $this->expectExceptionMessageIsOrContains('at least one family');
+
+        new FontFamilyValue([]);
+    }
+
+    public function testFontFamilyRejectsEmptyEntryAtConstruction(): void
+    {
+        $this->expectException(TokenException::class);
+        $this->expectExceptionMessageIsOrContains('must not be empty');
+
+        new FontFamilyValue(['Inter', '']);
+    }
+
+    public function testGradientRejectsASingleStopAtConstruction(): void
+    {
+        $this->expectException(TokenException::class);
+        $this->expectExceptionMessageIsOrContains('at least two color stops');
+
+        new GradientValue([
+            [
+                'color' => ColorValue::fromHex('#ff0000'),
+                'position' => 0.0,
+            ],
+        ]);
+    }
+
+    public function testGradientRejectsOutOfRangePositionAtConstruction(): void
+    {
+        $this->expectException(TokenException::class);
+        $this->expectExceptionMessageIsOrContains('must be a number in [0, 1]');
+
+        new GradientValue([
+            [
+                'color' => ColorValue::fromHex('#ff0000'),
+                'position' => 0.0,
+            ],
+            [
+                'color' => ColorValue::fromHex('#0000ff'),
+                'position' => 1.5,
+            ],
+        ]);
+    }
+
+    public function testShadowRejectsEmptyLayerListAtConstruction(): void
+    {
+        $this->expectException(TokenException::class);
+        $this->expectExceptionMessageIsOrContains('at least one layer');
+
+        new ShadowValue([]);
     }
 }

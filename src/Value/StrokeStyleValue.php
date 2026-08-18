@@ -9,6 +9,8 @@ use n5s\DtcgTokens\Internal\Str;
 
 final readonly class StrokeStyleValue implements TokenValueInterface
 {
+    use ResolvesModes;
+
     /**
      * The canonical DTCG/CSS stroke-style keywords (matches terrazzo).
      *
@@ -69,11 +71,6 @@ final readonly class StrokeStyleValue implements TokenValueInterface
     public function toCss(): string
     {
         return $this->__toString();
-    }
-
-    public function forMode(string $mode): static
-    {
-        return $this->modes[$mode] ?? $this;
     }
 
     /**

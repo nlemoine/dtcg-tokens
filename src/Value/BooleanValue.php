@@ -6,6 +6,8 @@ namespace n5s\DtcgTokens\Value;
 
 final readonly class BooleanValue implements TokenValueInterface
 {
+    use ResolvesModes;
+
     /**
      * @internal
      *
@@ -30,10 +32,5 @@ final readonly class BooleanValue implements TokenValueInterface
     public function value(): bool
     {
         return $this->value;
-    }
-
-    public function forMode(string $mode): static
-    {
-        return $this->modes[$mode] ?? $this;
     }
 }

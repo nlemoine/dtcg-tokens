@@ -9,6 +9,8 @@ namespace n5s\DtcgTokens\Value;
  */
 final readonly class LinkValue implements TokenValueInterface
 {
+    use ResolvesModes;
+
     /**
      * @internal
      *
@@ -33,10 +35,5 @@ final readonly class LinkValue implements TokenValueInterface
     public function value(): string
     {
         return $this->value;
-    }
-
-    public function forMode(string $mode): static
-    {
-        return $this->modes[$mode] ?? $this;
     }
 }
