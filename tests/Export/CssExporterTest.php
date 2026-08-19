@@ -271,6 +271,144 @@ final class CssExporterTest extends TestCase
         );
     }
 
+    public function testSelectorThatWouldBreakOutOfItsBlockIsRejected(): void
+    {
+        // The selector is emitted verbatim in front of the block, so it is an
+        // injection surface exactly like token names and values.
+        $this->expectException(TokenException::class);
+        $this->expectExceptionMessageIsOrContains('Invalid CSS selector');
+
+        new CssExporter(selector: ':root } body { background: red');
+    }
+
+    public function testSelectorWithUnterminatedAttributeStringIsRejected(): void
+    {
+        $this->expectException(TokenException::class);
+        $this->expectExceptionMessageIsOrContains('Invalid CSS selector');
+
+        new CssExporter(selector: '[data-theme="dark]');
+    }
+
+    public function testEmptySelectorIsRejected(): void
+    {
+        // An empty selector would emit " {\n}\n" — broken CSS with no error.
+        $this->expectException(TokenException::class);
+        $this->expectExceptionMessageIsOrContains('selector');
+
+        new CssExporter(selector: '   ');
+    }
+
+    public function testAttributeAndListSelectorsAreAccepted(): void
+    {
+        // Regression guard: realistic selectors carry quotes, brackets,
+        // commas, combinators and pseudo-classes.
+        $css = new CssExporter(selector: '[data-theme="dark"] .app > *, :root:not(.legacy)')
+            ->export(new Tokens([]));
+
+        self::assertStringStartsWith('[data-theme="dark"] .app > *, :root:not(.legacy) {', $css);
+    }
+
+    public function testPrefixWithNonIdentCharactersIsRejected(): void
+    {
+        // A bad prefix would otherwise surface at export time as a confusing
+        // "token path cannot be exported" error blaming every token.
+        $this->expectException(TokenException::class);
+        $this->expectExceptionMessageIsOrContains('Invalid CSS custom property prefix');
+
+        new CssExporter(prefix: 'ds tokens');
+    }
+
+    public function testPrefixWithTrailingNewlineIsRejected(): void
+    {
+        // Without the D modifier, $ would match before the trailing newline.
+        $this->expectException(TokenException::class);
+        $this->expectExceptionMessageIsOrContains('Invalid CSS custom property prefix');
+
+        new CssExporter(prefix: "ds\n");
+    }
+
+    public function testNumericTokenPathExports(): void
+    {
+        // PHP canonicalizes "4" to an int array key; without the cast the
+        // name check would receive an int under strict types.
+        $css = new CssExporter()
+            ->export(new Tokens([
+                '4' => ColorValue::fromHex('#ff0000'),
+            ]));
+
+        self::assertStringContainsString('--4: rgb(255 0 0);', $css);
+    }
+
+    public function testValueWithEscapeAsSecondToLastCharacterExports(): void
+    {
+        // Exercises the scanner's escape skip landing exactly on the last
+        // character: an off-by-one there rejects the value.
+        $tokens = Tokens::fromArray([
+            'x' => [
+                '$type' => 'string',
+                '$value' => 'x\\y',
+            ],
+        ]);
+
+        $css = new CssExporter()
+            ->export($tokens);
+
+        self::assertStringContainsString('--x: x\\y;', $css);
+    }
+
+    public function testInvalidPathErrorMessageIsBounded(): void
+    {
+        $tokens = new Tokens([
+            str_repeat('a', 500) . '!' => ColorValue::fromHex('#ff0000'),
+        ]);
+
+        try {
+            new CssExporter()
+                ->export($tokens);
+            self::fail('Expected a TokenException.');
+        } catch (TokenException $exception) {
+            self::assertStringContainsString('… (', $exception->getMessage());
+            self::assertLessThan(400, \strlen($exception->getMessage()));
+        }
+    }
+
+    public function testCollisionErrorMessageIsBounded(): void
+    {
+        $long = str_repeat('a', 300);
+        $tokens = new Tokens([
+            $long . '.b' => ColorValue::fromHex('#ff0000'),
+            $long . ' b' => ColorValue::fromHex('#00ff00'),
+        ]);
+
+        try {
+            new CssExporter()
+                ->export($tokens);
+            self::fail('Expected a TokenException.');
+        } catch (TokenException $exception) {
+            // Three interpolations (two paths and the property name), each bounded.
+            self::assertLessThan(600, \strlen($exception->getMessage()));
+        }
+    }
+
+    public function testUnsafeValueErrorMessageIsBoundedForLongPaths(): void
+    {
+        $tokens = Tokens::fromArray([
+            str_repeat('p', 300) => [
+                '$type' => 'string',
+                '$value' => 'a;b',
+            ],
+        ]);
+
+        try {
+            new CssExporter()
+                ->export($tokens);
+            self::fail('Expected a TokenException.');
+        } catch (TokenException $exception) {
+            self::assertStringContainsString('… (', $exception->getMessage());
+            self::assertLessThan(400, \strlen($exception->getMessage()));
+        }
+    }
+
     private function tokens(): Tokens
     {
         return Tokens::fromArray([

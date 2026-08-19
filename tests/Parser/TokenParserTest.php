@@ -2145,6 +2145,163 @@ final class TokenParserTest extends TestCase
         ]);
     }
 
+    public function testGroupTypeErrorCarriesGroupPath(): void
+    {
+        // walkTree runs before the per-token try/catch in parse(); without
+        // its own wrapping, a "$type must be a string" from a group deep in a
+        // large file gives no clue where to look.
+        $this->expectException(TokenException::class);
+        $this->expectExceptionMessageIsOrContains('Group "theme": $type must be a string');
+
+        $this->parser->parse([
+            'theme' => [
+                '$type' => 123,
+                'a' => [
+                    '$type' => 'boolean',
+                    '$value' => true,
+                ],
+            ],
+        ]);
+    }
+
+    public function testTokenLevelTypeErrorCarriesTokenPath(): void
+    {
+        $this->expectException(TokenException::class);
+        $this->expectExceptionMessageIsOrContains('Token "a.b": $type must be a string');
+
+        $this->parser->parse([
+            'a' => [
+                'b' => [
+                    '$type' => 42,
+                    '$value' => 1,
+                ],
+            ],
+        ]);
+    }
+
+    public function testInvalidModeExtensionErrorCarriesTokenPath(): void
+    {
+        $this->expectException(TokenException::class);
+        $this->expectExceptionMessageIsOrContains('Token "a": $extensions.mode must be an object');
+
+        $this->parser->parse([
+            'a' => [
+                '$type' => 'string',
+                '$value' => 'x',
+                '$extensions' => [
+                    'mode' => 'dark',
+                ],
+            ],
+        ]);
+    }
+
+    public function testTokenCarryingNestedChildrenThrows(): void
+    {
+        // Deep-merging a token file and a group file at the same path yields a
+        // node with both $value and children; treating it as a token would
+        // silently drop every nested token.
+        $this->expectException(TokenException::class);
+        $this->expectExceptionMessageIsOrContains('Path "a" is both a token and a group');
+
+        $this->parser->parse([
+            'a' => [
+                '$type' => 'string',
+                '$value' => 'x',
+                'b' => [
+                    '$value' => 'y',
+                ],
+            ],
+        ]);
+    }
+
+    public function testGroupAtExistingTokenPathThrows(): void
+    {
+        // A flat "a.b" token key and a nested a > b *group* do not collide on
+        // a token path, so the duplicate-path guard alone misses this shape.
+        $this->expectException(TokenException::class);
+        $this->expectExceptionMessageIsOrContains('Path "a.b" is both a token and a group');
+
+        $this->parser->parse([
+            'a.b' => [
+                '$type' => 'string',
+                '$value' => 'x',
+            ],
+            'a' => [
+                'b' => [
+                    'c' => [
+                        '$type' => 'string',
+                        '$value' => 'y',
+                    ],
+                ],
+            ],
+        ]);
+    }
+
+    public function testTokenAtExistingGroupPathThrows(): void
+    {
+        // Same collision, opposite declaration order.
+        $this->expectException(TokenException::class);
+        $this->expectExceptionMessageIsOrContains('Path "a.b" is both a token and a group');
+
+        $this->parser->parse([
+            'a' => [
+                'b' => [
+                    'c' => [
+                        '$type' => 'string',
+                        '$value' => 'y',
+                    ],
+                ],
+            ],
+            'a.b' => [
+                '$type' => 'string',
+                '$value' => 'x',
+            ],
+        ]);
+    }
+
+    public function testOverlongFontWeightValueIsExcerptedInMessage(): void
+    {
+        // A 300-digit numeric string passes is_numeric and fails the range
+        // check; the message must not echo it whole.
+        try {
+            $this->parser->parse([
+                'w' => [
+                    '$type' => 'fontWeight',
+                    '$value' => str_repeat('9', 300),
+                ],
+            ]);
+            self::fail('Expected a TokenException.');
+        } catch (TokenException $exception) {
+            self::assertStringContainsString('… (', $exception->getMessage());
+            self::assertLessThan(400, \strlen($exception->getMessage()));
+        }
+    }
+
+    public function testOverlongGradientPositionIsExcerptedInMessage(): void
+    {
+        try {
+            $this->parser->parse([
+                'g' => [
+                    '$type' => 'gradient',
+                    '$value' => [
+                        [
+                            'color' => '#ff0000',
+                            'position' => str_repeat('9', 300),
+                        ],
+                        [
+                            'color' => '#000000',
+                            'position' => 1,
+                        ],
+                    ],
+                ],
+            ]);
+            self::fail('Expected a TokenException.');
+        } catch (TokenException $exception) {
+            self::assertStringContainsString('… (', $exception->getMessage());
+            self::assertLessThan(400, \strlen($exception->getMessage()));
+        }
+    }
+
     public function testValueWithTrailingNewlineIsNotAnAlias(): void
     {
         // "{s.base}\n" is not an alias — without the D modifier, $ would match

@@ -83,17 +83,8 @@ final class DtcgTokensBundle extends AbstractBundle
         $services->set(Tokens::class)
             ->factory([service(CachedTokenFactory::class), 'create']);
 
-        if (! class_exists(Environment::class)) {
-            // Twig is not installed: nothing to integrate.
+        if (! self::shouldIntegrateTwig(class_exists(Environment::class), class_exists(AttributeExtension::class))) {
             return;
-        }
-
-        if (! class_exists(AttributeExtension::class)) {
-            // Twig is installed but too old — disappearing silently would be
-            // worse than failing the container build with a clear message.
-            throw new \LogicException(
-                'The n5s/dtcg-tokens Twig integration requires twig/twig >= 3.21 (Twig\Extension\AttributeExtension). Upgrade twig/twig, or remove it to skip the integration.',
-            );
         }
 
         $services->set(TokenExtension::class)
@@ -103,5 +94,29 @@ final class DtcgTokensBundle extends AbstractBundle
         $services->set('n5s_dtcg_tokens.twig_extension', AttributeExtension::class)
             ->args([TokenExtension::class])
             ->tag('twig.extension');
+    }
+
+    /**
+     * Whether to register the Twig integration: no Twig means nothing to
+     * integrate, and Twig without AttributeExtension (< 3.21) fails the
+     * container build — disappearing silently would be worse than a clear
+     * error.
+     *
+     * @internal Public for tests only: with Twig installed the class_exists()
+     * probes cannot be faked, but the decision they feed can be exercised.
+     */
+    public static function shouldIntegrateTwig(bool $twigInstalled, bool $hasAttributeExtension): bool
+    {
+        if (! $twigInstalled) {
+            return false;
+        }
+
+        if (! $hasAttributeExtension) {
+            throw new \LogicException(
+                'The n5s/dtcg-tokens Twig integration requires twig/twig >= 3.21 (Twig\Extension\AttributeExtension). Upgrade twig/twig, or remove it to skip the integration.',
+            );
+        }
+
+        return true;
     }
 }
