@@ -56,16 +56,17 @@ final class DtcgTokensBundleTest extends TestCase
         ]);
 
         self::assertTrue($builder->hasDefinition(TokenExtension::class));
-        self::assertArrayHasKey(
-            'twig.runtime',
-            $builder->getDefinition(TokenExtension::class)->getTags(),
-        );
+        $runtimeDefinition = $builder->getDefinition(TokenExtension::class);
+        self::assertArrayHasKey('twig.runtime', $runtimeDefinition->getTags());
+        self::assertInstanceOf(Reference::class, $runtimeDefinition->getArguments()[0]);
+        self::assertSame(Tokens::class, (string) $runtimeDefinition->getArguments()[0]);
 
         $extensionId = 'n5s_dtcg_tokens.twig_extension';
         self::assertTrue($builder->hasDefinition($extensionId));
         $extensionDefinition = $builder->getDefinition($extensionId);
         self::assertSame(AttributeExtension::class, $extensionDefinition->getClass());
         self::assertArrayHasKey('twig.extension', $extensionDefinition->getTags());
+        self::assertSame([TokenExtension::class], $extensionDefinition->getArguments());
     }
 
     public function testCacheConfigWiresPsr6PoolReference(): void
@@ -115,6 +116,17 @@ final class DtcgTokensBundleTest extends TestCase
         self::assertNull($builder->getDefinition(CachedTokenFactory::class)->getArguments()[4]);
     }
 
+    public function testTtlOfOneSecondIsAccepted(): void
+    {
+        // Boundary of min(1): the smallest meaningful lifetime must pass.
+        $builder = $this->load([
+            'files' => [self::FIXTURE],
+            'ttl' => 1,
+        ]);
+
+        self::assertSame(1, $builder->getDefinition(CachedTokenFactory::class)->getArguments()[4]);
+    }
+
     public function testNonPositiveTtlIsRejected(): void
     {
         // A zero or negative TTL would write an already-expired entry on
@@ -125,6 +137,28 @@ final class DtcgTokensBundleTest extends TestCase
             'files' => [self::FIXTURE],
             'ttl' => 0,
         ]);
+    }
+
+    public function testTwigIntegrationIsSkippedWhenTwigIsAbsent(): void
+    {
+        // The class_exists() probes cannot be faked with Twig installed; the
+        // decision they feed is exercised directly instead.
+        self::assertFalse(DtcgTokensBundle::shouldIntegrateTwig(twigInstalled: false, hasAttributeExtension: false));
+    }
+
+    public function testTwigIntegrationIsEnabledOnModernTwig(): void
+    {
+        self::assertTrue(DtcgTokensBundle::shouldIntegrateTwig(twigInstalled: true, hasAttributeExtension: true));
+    }
+
+    public function testOutdatedTwigFailsTheContainerBuildWithAClearMessage(): void
+    {
+        // Twig installed but < 3.21: disappearing silently would be worse
+        // than failing the container build.
+        $this->expectException(\LogicException::class);
+        $this->expectExceptionMessageIsOrContains('twig/twig >= 3.21');
+
+        DtcgTokensBundle::shouldIntegrateTwig(twigInstalled: true, hasAttributeExtension: false);
     }
 
     public function testEmptyFilesListIsRejected(): void

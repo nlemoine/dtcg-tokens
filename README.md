@@ -167,6 +167,8 @@ Per-token mode names are also on the metadata: `$tokens->metadata('color.fg')->m
 
 One rule to know: mode-bound values are **mode-terminal** — a value returned by `forMode()` (or a component accessor of a composite) carries no sibling map, so calling `forMode()` on it again returns itself. Always bind modes from the base value, or use `Tokens::forMode()` on the collection.
 
+Modes are resolved eagerly at parse time: every token is built once per mode it (transitively) supports, so parsing costs O(tokens × modes). That is deliberate — lookups and `forMode()` projections are then plain array reads, and the parsed result is what gets cached. With very large files and many modes, put the cost behind `CachedTokenFactory` (see [Caching](#caching)) so it is paid once per change, not per request.
+
 ### Aliases and modes
 
 Aliases are resolved per mode: an alias resolves to its target's value **in the same mode**, falling back to the target's base when the target does not declare that mode. A token that aliases a themed token but declares no modes of its own **hoists** the target's modes:
@@ -287,7 +289,7 @@ new CssExporter(selector: '[data-theme="dark"]')->export($tokens->forMode('dark'
 
 Token paths are slugged by replacing `.` and spaces with `-`; values use each value object's string form.
 
-Names and values are emitted verbatim, so the exporter refuses anything able to break out of its declaration: a token path that does not slug to a valid custom property name, or a serialized value containing `;`, `{`, `}` or `/*`, throws a `TokenException` (no silent escaping — that would create colliding names and altered values). Token files are treated as trusted developer input; if yours come from an external source (CMS, user upload, third-party export), validate them upstream.
+Names and values are emitted verbatim, so the exporter refuses anything able to break out of its declaration: a token path that does not slug to a valid custom property name, or a serialized value containing `;`, `{`, `}` or `/*`, throws a `TokenException` (no silent escaping — that would create colliding names and altered values). The constructor holds `prefix` and `selector` to the same standard, so a bad one fails at construction rather than as broken CSS. Token files are treated as trusted developer input; if yours come from an external source (CMS, user upload, third-party export), validate them upstream.
 
 ## Caching
 
@@ -308,6 +310,8 @@ $tokens = $factory->create();
 ```
 
 With `debug: false` the pool entry is served without any freshness check, so a pool that **survives deploys** (Redis, APCu) keeps serving the previous release's tokens. Either set a `ttl`, or clear the entry on deploy — its key is exposed as `$factory->cacheKey()`. A pool failure is never fatal: the factory falls back to a fresh parse.
+
+Long-running workers (FrankenPHP, Swoole, RoadRunner) add one caveat: `JsonFileLoader` reads `filemtime()` and `realpath()`, both of which PHP caches per process (the realpath cache holds symlink resolution for up to `realpath_cache_ttl`, 120s by default). Inside a worker, a symlink-swapped deploy can therefore keep resolving into the previous release, and debug-mode mtime checks can briefly serve stale answers. Restarting workers on deploy — which such runtimes need anyway for the code itself — clears both caches.
 
 Without a cache pool it simply parses on first `create()` and reuses the result in-process. The Symfony bundle wires this factory for you.
 

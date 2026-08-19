@@ -75,7 +75,9 @@ final class TokenParser
         // ("4", "2024") to an int array key.
         /** @var array<array-key, RawEntry> $entries */
         $entries = [];
-        $this->walkTree($raw, '', null, false, $entries);
+        /** @var array<array-key, true> $groupPaths */
+        $groupPaths = [];
+        $this->walkTree($raw, '', null, false, $entries, $groupPaths);
 
         // Step 2: Resolve each token in every mode it (transitively) supports,
         // then build typed value objects carrying their per-mode siblings.
@@ -119,10 +121,19 @@ final class TokenParser
      *
      * @param array<string, mixed> $node
      * @param array<array-key, RawEntry> $entries
+     * @param array<array-key, true> $groupPaths
      */
-    private function walkTree(array $node, string $prefix, ?string $inheritedType, bool $inheritedDeprecated, array &$entries): void
+    private function walkTree(array $node, string $prefix, ?string $inheritedType, bool $inheritedDeprecated, array &$entries, array &$groupPaths): void
     {
-        $groupType = $this->stringTypeOf($node) ?? $inheritedType;
+        try {
+            $groupType = $this->stringTypeOf($node) ?? $inheritedType;
+        } catch (TokenException $exception) {
+            // The per-token wrapping in parse() runs after the walk; a bare
+            // "$type must be a string" from deep inside a large file gives no
+            // clue where to look.
+            throw $prefix === '' ? $exception : TokenException::inGroup($prefix, $exception);
+        }
+
         $groupDeprecated = \array_key_exists('$deprecated', $node)
             ? $this->normalizeDeprecated($node['$deprecated'])
             : $inheritedDeprecated;
@@ -146,36 +157,59 @@ final class TokenParser
                     throw TokenException::duplicatePath($path);
                 }
 
+                if (isset($groupPaths[$path])) {
+                    throw TokenException::pathIsTokenAndGroup($path);
+                }
+
+                foreach ($child as $childKey => $grandChild) {
+                    // Deep-merging a token file with a group file yields a node
+                    // with both $value and children; treating it as a token
+                    // would silently drop every nested token. Non-array junk
+                    // keys stay tolerated, as everywhere else in the walk.
+                    if (\is_array($grandChild) && ! str_starts_with((string) $childKey, '$')) {
+                        throw TokenException::pathIsTokenAndGroup($path);
+                    }
+                }
+
                 $description = $child['$description'] ?? null;
 
-                /** @var RawEntry $entry */
-                $entry = [
-                    'type' => $this->stringTypeOf($child) ?? $groupType,
-                    'value' => $child['$value'],
-                    'description' => \is_string($description) ? $description : null,
-                    'deprecated' => \array_key_exists('$deprecated', $child)
-                        ? $this->normalizeDeprecated($child['$deprecated'])
-                        : $groupDeprecated,
-                ];
+                try {
+                    /** @var RawEntry $entry */
+                    $entry = [
+                        'type' => $this->stringTypeOf($child) ?? $groupType,
+                        'value' => $child['$value'],
+                        'description' => \is_string($description) ? $description : null,
+                        'deprecated' => \array_key_exists('$deprecated', $child)
+                            ? $this->normalizeDeprecated($child['$deprecated'])
+                            : $groupDeprecated,
+                    ];
 
-                // array_key_exists, not isset: an authored `"mode": null` is
-                // present-but-invalid, and must reach the type check below
-                // rather than silently disabling modes.
-                if (isset($child['$extensions']) && \is_array($child['$extensions']) && \array_key_exists('mode', $child['$extensions'])) {
-                    $mode = $child['$extensions']['mode'];
-                    if (! \is_array($mode)) {
-                        throw TokenException::invalidValue(\sprintf(
-                            '$extensions.mode must be an object mapping mode names to values, got %s.',
-                            get_debug_type($mode),
-                        ));
+                    // array_key_exists, not isset: an authored `"mode": null` is
+                    // present-but-invalid, and must reach the type check below
+                    // rather than silently disabling modes.
+                    if (isset($child['$extensions']) && \is_array($child['$extensions']) && \array_key_exists('mode', $child['$extensions'])) {
+                        $mode = $child['$extensions']['mode'];
+                        if (! \is_array($mode)) {
+                            throw TokenException::invalidValue(\sprintf(
+                                '$extensions.mode must be an object mapping mode names to values, got %s.',
+                                get_debug_type($mode),
+                            ));
+                        }
+
+                        $entry['modes'] = $mode;
                     }
-
-                    $entry['modes'] = $mode;
+                } catch (TokenException $exception) {
+                    throw TokenException::inToken($path, $exception);
                 }
 
                 $entries[$path] = $entry;
             } else {
-                $this->walkTree($child, $path, $groupType, $groupDeprecated, $entries);
+                if (isset($entries[$path])) {
+                    throw TokenException::pathIsTokenAndGroup($path);
+                }
+
+                $groupPaths[$path] = true;
+                $this->walkTree($child, $path, $groupType, $groupDeprecated, $entries, $groupPaths);
             }
         }
     }
@@ -423,7 +457,7 @@ final class TokenParser
         $numeric = (float) $value;
         // CSS font-weight is an integer in the 1..1000 range.
         if ($numeric < 1 || $numeric > 1000 || floor($numeric) !== $numeric) {
-            throw TokenException::invalidValue(\sprintf('fontWeight number "%s" must be an integer between 1 and 1000.', $value));
+            throw TokenException::invalidValue(\sprintf('fontWeight number "%s" must be an integer between 1 and 1000.', Str::excerpt((string) $value)));
         }
 
         return new NumberValue($numeric, $modeMap);
@@ -641,7 +675,7 @@ final class TokenParser
             if (! is_numeric($position) || $position < 0 || $position > 1) {
                 throw TokenException::invalidValue(\sprintf(
                     'Gradient stop position must be a number in [0, 1], got %s.',
-                    is_numeric($position) ? (string) $position : get_debug_type($position),
+                    is_numeric($position) ? Str::excerpt((string) $position) : get_debug_type($position),
                 ));
             }
 

@@ -32,6 +32,11 @@ final class NumberTest extends TestCase
         yield 'large fractional keeps authored precision' => [12345678.9, '12345678.9'];
         yield 'hundredths' => [0.05, '0.05'];
         yield 'precision capped at 12 decimals' => [1 / 3, '0.333333333333'];
+        // Casting to float first would round these to the nearest representable
+        // double (PHP_INT_MAX becomes ...5808, 2^53+1 becomes 2^53).
+        yield 'PHP_INT_MAX keeps integer precision' => [\PHP_INT_MAX, '9223372036854775807'];
+        yield 'PHP_INT_MIN keeps integer precision' => [\PHP_INT_MIN, '-9223372036854775808'];
+        yield 'first double-unrepresentable integer' => [9007199254740993, '9007199254740993'];
     }
 
     #[DataProvider('provideValues')]

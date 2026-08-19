@@ -29,6 +29,23 @@ class TokenException extends \RuntimeException
         );
     }
 
+    public static function inGroup(string $path, self $previous): TokenParseException
+    {
+        return new TokenParseException(
+            \sprintf('Group "%s": %s', Str::excerpt($path), $previous->getMessage()),
+            0,
+            $previous,
+        );
+    }
+
+    public static function pathIsTokenAndGroup(string $path): TokenParseException
+    {
+        return new TokenParseException(\sprintf(
+            'Path "%s" is both a token and a group: a token cannot contain nested tokens. This typically comes from a flat key next to a nested group, or from merging files that disagree about the path.',
+            Str::excerpt($path),
+        ));
+    }
+
     public static function duplicatePath(string $path): TokenParseException
     {
         return new TokenParseException(\sprintf(

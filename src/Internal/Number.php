@@ -20,7 +20,13 @@ final class Number
      */
     public static function format(int|float $value): string
     {
-        $float = (float) $value;
+        if (\is_int($value)) {
+            // Above 2^53 a double cannot represent every integer, so the
+            // float path would silently round (PHP_INT_MAX ends in ...5808).
+            return (string) $value;
+        }
+
+        $float = $value;
 
         // Fewest decimals (0..12) at which rounding reproduces the exact
         // double; fall back to the 12-decimal cap when none does.
