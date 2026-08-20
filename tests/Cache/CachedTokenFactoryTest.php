@@ -47,23 +47,30 @@ final class CachedTokenFactoryTest extends TestCase
         self::assertSame($tokens, $factory->create());
     }
 
-    public function testCacheKeyCarriesAFormatVersion(): void
+    public function testCacheKeyCarriesTheReleaseVersion(): void
     {
         // The cached payload's shape is the value objects' private property
-        // layout. A version segment in the key invalidates pools that survive
-        // deploys (Redis, APCu) when that layout changes between releases.
+        // layout. The key carries the release version so pools that survive
+        // deploys (Redis, APCu) can never read an entry written by a different
+        // release. release-please rewrites the constant on every release, so
+        // this asserts the shape rather than a value that would need editing
+        // each time — a hand-edit to something that is not a version fails.
         $factory = new CachedTokenFactory(new JsonFileLoader(self::BASE));
 
-        // v3: TokenMetadata gained `modes` and `type` (serialized shape change).
-        self::assertStringStartsWith('n5s_dtcg_tokens.v3.', $factory->cacheKey());
+        self::assertMatchesRegularExpression(
+            '/^n5s_dtcg_tokens\.\d+\.\d+\.\d+\./',
+            $factory->cacheKey(),
+        );
     }
 
     public function testCacheVersionIsPinnedToTheSerializedShapes(): void
     {
-        // The pool stores serialize()d value-object graphs: renaming a single
-        // private property is an internal change that becomes a production
-        // incident on any deploy sharing a persistent pool — unless
-        // CACHE_VERSION is bumped. This pin forces that discipline.
+        // The pool stores serialize()d value-object graphs, so renaming a
+        // single private property changes what a cached entry means. The key
+        // carries the release version, so a *released* change is handled
+        // automatically; this pin catches the window that is not covered —
+        // a shape change shipped to a pool shared with an unreleased build,
+        // and, more usefully, it makes the change visible in review.
         $classes = [
             TokenMetadata::class,
             BooleanValue::class,
@@ -96,7 +103,7 @@ final class CachedTokenFactoryTest extends TestCase
         self::assertSame(
             'd2d740156ea4d73a959e50adb89604d0',
             hash('xxh128', (string) json_encode($shapes)),
-            'The serialized shape of cached value objects changed: bump CachedTokenFactory::CACHE_VERSION, then update this pinned hash.',
+            'The serialized shape of cached value objects changed. Released builds are covered by the version in the cache key; confirm nothing reads a pool written by an unreleased build, then update this pinned hash.',
         );
     }
 

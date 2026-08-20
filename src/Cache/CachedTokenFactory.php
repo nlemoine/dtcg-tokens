@@ -16,13 +16,22 @@ final class CachedTokenFactory
     private const string CACHE_KEY_PREFIX = 'n5s_dtcg_tokens.';
 
     /**
-     * Version segment of the cache key. The cached payload's shape is the
-     * value objects' private property layout (they are serialized as-is), so
-     * bump this whenever that layout — or parsing semantics — changes:
-     * pools that survive deploys (Redis, APCu) then miss instead of
-     * unserializing stale objects into the new classes.
+     * Version segment of the cache key, kept in sync with the released
+     * version by release-please (see `extra-files` in
+     * release-please-config.json) — do not edit it by hand.
+     *
+     * The cached payload's shape is the value objects' private property
+     * layout, since they are serialized as-is. Tying the segment to the
+     * release means an entry can never be read by a different release, so a
+     * pool that survives deploys (Redis, APCu) cannot unserialize stale
+     * objects into changed classes. The cost is one re-parse per release,
+     * including releases that leave the payload untouched — cheap next to
+     * having to notice a shape change by hand.
+     *
+     * Releases before 2.0.1 used a manual "vN" counter, which cannot collide
+     * with a version-shaped segment.
      */
-    private const string CACHE_VERSION = 'v3';
+    private const string CACHE_VERSION = '2.0.0'; // x-release-please-version
 
     private ?Tokens $tokens = null;
 
