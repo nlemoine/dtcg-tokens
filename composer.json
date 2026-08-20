@@ -34,11 +34,11 @@
         "symfony/dependency-injection": "^7.4 || ^8.0",
         "symfony/http-kernel": "^7.4 || ^8.0",
         "symplify/easy-coding-standard": "^13.0",
-        "twig/twig": "^3.21"
+        "twig/twig": "^3.27"
     },
     "suggest": {
         "symfony/http-kernel": "For the Symfony bundle (auto-wiring + Twig registration)",
-        "twig/twig": "For Twig template integration via TokenExtension (^3.21, needs attribute-based extensions)"
+        "twig/twig": "For Twig template integration via TokenExtension (^3.27; 3.21 is the technical minimum for attribute-based extensions, but every release below 3.27 carries sandbox CVEs)"
     },
     "minimum-stability": "stable",
     "prefer-stable": true,
