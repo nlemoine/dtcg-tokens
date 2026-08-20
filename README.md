@@ -329,19 +329,21 @@ Built and tested against PHP 8.4. PHPStan runs at max level with strict rules; E
 ## Upgrading from 1.x
 
 2.0 makes the parser strict. Most changes surface as a `TokenException` on
-input that 1.x accepted, so they are loud. **Two are silent — check these
-first:**
+input that 1.x accepted, so they are loud. **Three were silent in 1.x — check
+these first:**
 
 | Token | 1.x | 2.0 |
 | ----- | --- | --- |
 | `"$value": "red"` (any CSS color name) | resolved to `#ff0000` | **throws** `TokenParseException` — use `#ff0000` |
 | `hsl` components `[210, 0.5, 0.4]` | treated as fractions, rendered mid-blue | read as spec percentages: `hsl(210 0.5% 0.4%)`, i.e. near-black. **Multiply S/L/W/B by 100** |
+| a node with both `$value` and child tokens | parsed as a token, **children silently dropped** | **throws** `TokenParseException` (`is both a token and a group`) — split the node, or fix the file that merges into it |
 
 Everything else, grouped:
 
 - **Color** — hex must be `#rgb` / `#rgba` / `#rrggbb` / `#rrggbbaa`; `okhsv` requires its `hex` fallback at parse time; `hex()` returns the value lowercased; out-of-range sRGB channels and alpha are clamped when reducing to sRGB (they used to overflow into invalid CSS).
 - **Values now rejected instead of coerced** — `boolean` from a string (`"false"` was `true`), non-numeric or infinite dimensions/durations/numbers (`"1e999"` rendered `infpx`), `lineHeight: "normal"`, empty `gradient` / `shadow` / `fontFamily`, invalid `dashArray` entries (a dashed token used to render `solid`), duplicate token paths.
-- **Output** — `CssExporter` throws on names and values it cannot emit safely; `fontFamily` quoting now also covers underscores, leading digits and non-ASCII; integers from 4504 up no longer pick up floating-point noise (`5000` was `5000.000000000001`).
+- **Output** — `CssExporter` throws on names and values it cannot emit safely, and validates its own `prefix` and `selector` at construction; `fontFamily` quoting now also covers underscores, leading digits and non-ASCII; integers from 4504 up no longer pick up floating-point noise (`5000` was `5000.000000000001`).
+- **Value objects** — constructors enforce their invariants, so building one directly now throws on an unknown dimension unit (only `px`, `rem`, `em`, `ms`, `s`), a non-finite number, a malformed cubic-bezier, an empty font family, a gradient with fewer than two stops, or a shadow with no layer.
 - **API** — `TokenValueInterface` adds `toCss()` (implement it if you have your own value objects); `Tokens::getIterator()` is typed `\Traversable`; the Twig `hex` / `rgb` filters throw `TokenException` instead of `LogicException`; `boolean`, `string` and `link` now honour `$extensions.mode`.
 - **Messages** — every parse error is prefixed `Token "path": ` and long authored content is excerpted, so tests matching exception strings need updating.
 - **Cache** — keys carry a new version, so persistent pools miss once after the upgrade. That is intended.
