@@ -31,7 +31,7 @@ final class CachedTokenFactory
      * Releases before 2.0.1 used a manual "vN" counter, which cannot collide
      * with a version-shaped segment.
      */
-    private const string CACHE_VERSION = '2.0.0'; // x-release-please-version
+    private const string CACHE_VERSION = '2.0.1'; // x-release-please-version
 
     private ?Tokens $tokens = null;
 

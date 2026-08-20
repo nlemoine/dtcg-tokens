@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.0.1](https://github.com/nlemoine/dtcg-tokens/compare/2.0.0...2.0.1) (2026-08-20)
+
+
+### Bug Fixes
+
+* tie the cache key version to the released version ([03c2a8e](https://github.com/nlemoine/dtcg-tokens/commit/03c2a8e87574b4d170816901a3596d47dcf263a5))
+
 ## [2.0.0](https://github.com/nlemoine/dtcg-tokens/compare/1.0.0...2.0.0) (2026-08-20)
 
 
