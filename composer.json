@@ -34,7 +34,7 @@
         "symfony/dependency-injection": "^7.4 || ^8.0",
         "symfony/http-kernel": "^7.4 || ^8.0",
         "symplify/easy-coding-standard": "^13.0",
-        "twig/twig": "^3.0"
+        "twig/twig": "^3.21"
     },
     "suggest": {
         "symfony/http-kernel": "For the Symfony bundle (auto-wiring + Twig registration)",
