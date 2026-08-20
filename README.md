@@ -315,7 +315,7 @@ Long-running workers (FrankenPHP, Swoole, RoadRunner) add one caveat: `JsonFileL
 
 Without a cache pool it simply parses on first `create()` and reuses the result in-process. The Symfony bundle wires this factory for you.
 
-The factory accepts any `CacheableTokenLoaderInterface` — a `TokenLoaderInterface` extended with `revision()` (an opaque freshness marker: an mtime, an ETag, a content hash; `null` = unknown = always stale in debug) and `fingerprint()` — so a custom loader (HTTP, database, …) keeps caching support. `JsonFileLoader` implements it. Cache keys carry a format version segment, so entries written by an older release miss instead of unserializing into changed value-object classes.
+The factory accepts any `CacheableTokenLoaderInterface` — a `TokenLoaderInterface` extended with `revision()` (an opaque freshness marker: an mtime, an ETag, a content hash; `null` = unknown = always stale in debug) and `fingerprint()` — so a custom loader (HTTP, database, …) keeps caching support. `JsonFileLoader` implements it. Cache keys carry the release version, so an entry written by another release misses instead of unserializing into changed value-object classes. The trade is deliberate: an upgrade always costs one re-parse per key, even when the payload did not change.
 
 ## Development
 
