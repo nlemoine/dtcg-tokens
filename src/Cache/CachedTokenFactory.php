@@ -103,7 +103,6 @@ final class CachedTokenFactory
                 // with it. Without an item there is nothing to write either —
                 // but that is a FAILED write, not an unattempted one, or an
                 // unreachable pool would be indistinguishable from no pool.
-                $item = null;
                 $this->cacheWritten = false;
             }
         }
@@ -150,7 +149,7 @@ final class CachedTokenFactory
                 // throwing (an oversized payload, a full backend), so both
                 // outcomes are recorded: the parse already succeeded, and a
                 // failed write only costs the next request a re-parse.
-                $this->cacheWritten = $this->cache?->save($item) ?? false;
+                $this->cacheWritten = $this->cache->save($item);
             } catch (\Throwable) {
                 $this->cacheWritten = false;
             }
