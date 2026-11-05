@@ -27,7 +27,7 @@
         "phpstan/phpstan": "^2.0",
         "phpstan/phpstan-strict-rules": "^2.0",
         "phpunit/phpunit": "^13.2",
-        "rector/rector": "^2.4",
+        "rector/rector": "^2.8.4",
         "shipmonk/phpstan-rules": "^4.4",
         "symfony/cache": "^7.4 || ^8.0",
         "symfony/config": "^7.4 || ^8.0",

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-use Rector\CodeQuality\Rector\Identical\FlipTypeControlToUseExclusiveTypeRector;
+use Rector\CodeQuality\Rector\If_\ExplicitNullableObjectInstanceRector;
 use Rector\Config\RectorConfig;
 use Rector\DeadCode\Rector\Node\RemoveNonExistingVarAnnotationRector;
 use Rector\PHPUnit\CodeQuality\Rector\Class_\PreferPHPUnitThisCallRector;
@@ -16,8 +16,6 @@ return RectorConfig::configure()
         deadCode: true,
         codeQuality: true,
         typeDeclarations: true,
-        instanceOf: true,
-        earlyReturn: true,
     )
     // PHPUnit rules, three complementary layers:
     //   withComposerBased    - version-migration sets (phpunit40..125), gated on the installed PHPUnit version
@@ -34,6 +32,6 @@ return RectorConfig::configure()
         RemoveNonExistingVarAnnotationRector::class,
         // Keep the readable `!== null` checks in CachedTokenFactory; this rule would
         // otherwise rewrite nullable-property null checks to `instanceof <FQCN>`.
-        FlipTypeControlToUseExclusiveTypeRector::class,
+        ExplicitNullableObjectInstanceRector::class,
     ])
     ->withCache(cacheDirectory: __DIR__ . '/.rector.cache');
