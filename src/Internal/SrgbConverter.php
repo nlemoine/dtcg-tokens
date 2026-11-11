@@ -57,25 +57,22 @@ final class SrgbConverter
         }
 
         try {
-            // oklch: L is 0..1 per spec; iris expects a 0..100 percentage.
+            // oklch: L is 0..1 per spec, sent as an explicit percentage: the
+            // vendor reads a bare lightness <= 1 as a 0..1 fraction, so L at
+            // or below 0.01 would otherwise be scaled up a hundredfold.
+            // Negative chroma is clamped like CSS does; the vendor would
+            // otherwise render it as the opposite hue.
             $rgb = new Oklch(\sprintf(
-                '%s,%s,%s',
+                '%s%%,%s,%s',
                 Number::format(self::clamp($channels[0], 0.0, 1.0) * 100),
-                Number::format($channels[1]),
+                Number::format(max(0.0, $channels[1])),
                 Number::format(self::normalizeHue($channels[2])),
             ))->toRgb();
         } catch (InvalidColorException $e) {
             throw TokenException::colorConversionFailed($colorSpace, $e);
         }
 
-        /** @var int $r */
-        $r = $rgb->red();
-        /** @var int $g */
-        $g = $rgb->green();
-        /** @var int $b */
-        $b = $rgb->blue();
-
-        return [$r, $g, $b];
+        return [$rgb->red(), $rgb->green(), $rgb->blue()];
     }
 
     /**

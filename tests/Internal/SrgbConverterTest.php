@@ -54,6 +54,22 @@ final class SrgbConverterTest extends TestCase
         );
     }
 
+    public function testOklchLightnessAtOrBelowOnePercentIsNotReadAsFraction(): void
+    {
+        // The vendor reads a bare lightness <= 1 as a 0..1 fraction (CSS
+        // Color 4), so 0.01 sent as "1" would become 100% and render white.
+        self::assertSame([0, 0, 0], SrgbConverter::toRgbChannels('oklch', [0.01, 0.0, 0.0]));
+        self::assertSame([0, 0, 0], SrgbConverter::toRgbChannels('oklch', [0.005, 0.0, 0.0]));
+    }
+
+    public function testOklchNegativeChromaIsClampedToZero(): void
+    {
+        self::assertSame(
+            SrgbConverter::toRgbChannels('oklch', [0.5, 0.0, 120.5]),
+            SrgbConverter::toRgbChannels('oklch', [0.5, -0.1, 120.5]),
+        );
+    }
+
     public function testNonReducibleSpaceThrowsInsteadOfSilentlyConvertingAsOklch(): void
     {
         // An unguarded else branch would treat any future space (e.g. hwb
