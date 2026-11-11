@@ -450,7 +450,7 @@ final class ColorValueTest extends TestCase
     public function testNonReducibleSpaceWithEightDigitHexFallbackDerivesRgbFromStrippedHex(): void
     {
         // display-p3 is not sRGB-reducible, so toRgb() goes through the hex
-        // fallback; an 8-digit fallback must be stripped to 6 digits for Iris.
+        // fallback; the alpha digits of an 8-digit fallback are ignored.
         $color = ColorValue::fromComponents('display-p3', [1.0, 0.0, 0.0], 1.0, '#fd000080');
 
         self::assertSame('rgb(253 0 0)', $color->toRgb());
