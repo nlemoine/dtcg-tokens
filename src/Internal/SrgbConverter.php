@@ -45,10 +45,10 @@ final class SrgbConverter
         }
 
         if ($colorSpace === 'hsl') {
-            // Converted here rather than through the vendor: its HSL parser
-            // only accepts integer components, which would quantize the
-            // authored color (50.4% lightness becoming 50%) long before the
-            // 8-bit channels are computed.
+            // Converted here rather than through the vendor: the floats go
+            // straight to the 8-bit channels with no string round trip, and
+            // the vendor stays confined to oklch. Fractional components
+            // must survive (50.4% lightness must not become 50%).
             return self::hslToRgbChannels(
                 self::normalizeHue($channels[0]),
                 self::clamp($channels[1], 0.0, 100.0) / 100,
