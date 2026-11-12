@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.0.2](https://github.com/nlemoine/dtcg-tokens/compare/2.0.1...2.0.2) (2026-11-12)
+
+
+### Bug Fixes
+
+* **deps:** require ozdemirburak/iris ^5.0 ([a9d36c1](https://github.com/nlemoine/dtcg-tokens/commit/a9d36c16a36c3f450e027150170ecf9fa9642ad7))
+
 ## [2.0.1](https://github.com/nlemoine/dtcg-tokens/compare/2.0.0...2.0.1) (2026-08-20)
 
 
