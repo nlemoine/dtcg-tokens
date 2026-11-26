@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.0.3](https://github.com/nlemoine/dtcg-tokens/compare/2.0.2...2.0.3) (2026-11-26)
+
+
+### Miscellaneous Chores
+
+* add GitHub Sponsors to composer funding ([be2624d](https://github.com/nlemoine/dtcg-tokens/commit/be2624d140501137892413be58bdd744c9d3aa8e))
+
 ## [2.0.2](https://github.com/nlemoine/dtcg-tokens/compare/2.0.1...2.0.2) (2026-11-12)
 
 
